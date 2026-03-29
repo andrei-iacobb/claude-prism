@@ -8,6 +8,7 @@ import { useClaudeChatStore } from "@/stores/claude-chat-store";
 import { ProjectPicker } from "@/components/project-picker";
 import { WorkspaceLayout } from "@/components/workspace/workspace-layout";
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -92,6 +93,15 @@ export function App({ onReady }: { onReady?: () => void }) {
 
   // Register global keyboard shortcuts (Cmd+S, Cmd+N) at the app level
   useKeyboardShortcuts();
+
+  // Auto-open project from CLI args (e.g., `open -a "Claude Prism" --args /path/to/dir`)
+  useEffect(() => {
+    invoke<string | null>("get_initial_project_path").then((path) => {
+      if (path) {
+        useDocumentStore.getState().openProject(path);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     onReady?.();

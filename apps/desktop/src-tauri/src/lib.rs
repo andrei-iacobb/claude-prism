@@ -3,11 +3,22 @@ mod history;
 mod latex;
 mod skills;
 mod slash_commands;
+mod terminal;
 mod uv;
 mod zotero;
 
 use std::path::Path;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// Holds the initial project path passed via CLI args (consumed once by the frontend).
+pub struct InitialProjectPath(pub std::sync::Mutex<Option<String>>);
+
+#[tauri::command]
+fn get_initial_project_path(
+    state: tauri::State<InitialProjectPath>,
+) -> Option<String> {
+    state.0.lock().unwrap().take()
+}
 
 /// Entry point for the `--tectonic-compile` subprocess mode.
 /// Runs tectonic compilation in an isolated process so that C-level global state
@@ -312,7 +323,7 @@ async fn read_clipboard_file_paths() -> Result<Vec<String>, String> {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub fn run(initial_path: Option<String>) {
     // Load .env file (walks up from cwd to find it)
     let _ = dotenvy::dotenv();
 
@@ -326,6 +337,8 @@ pub fn run() {
         .manage(claude::ClaudeProcessState::default())
         .manage(latex::LatexCompilerState::default())
         .manage(zotero::ZoteroOAuthState::default())
+        .manage(InitialProjectPath(std::sync::Mutex::new(initial_path)))
+        .manage(terminal::TerminalProcessState::default())
         .setup(|_app| Ok(()))
         .invoke_handler(tauri::generate_handler![
             create_new_window,
@@ -333,6 +346,7 @@ pub fn run() {
             open_in_editor,
             js_log,
             read_clipboard_file_paths,
+            get_initial_project_path,
             latex::compile_latex,
             latex::synctex_edit,
             claude::check_claude_status,
@@ -376,6 +390,10 @@ pub fn run() {
             uv::uv_run_command,
             get_system_info,
             open_debug_window,
+            terminal::terminal_spawn,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_kill,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -436,6 +454,13 @@ pub fn run() {
                 let state_clone = claude_state.inner().clone();
                 tauri::async_runtime::spawn(async move {
                     claude::kill_process_for_window(&state_clone, &label_clone).await;
+                });
+
+                // Kill all terminal processes
+                let terminal_state = app_handle.state::<terminal::TerminalProcessState>();
+                let terminal_clone = terminal_state.inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    terminal::kill_all_terminals(&terminal_clone).await;
                 });
 
                 // Quit the app when the last window is closed

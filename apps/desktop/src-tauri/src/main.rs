@@ -18,5 +18,12 @@ fn main() {
         }
     }
 
-    claude_prism_desktop_lib::run()
+    // Check if a directory path was passed as an argument (for auto-open)
+    let initial_path = args
+        .iter()
+        .skip(1)
+        .find(|a| !a.starts_with("--") && std::path::Path::new(a).is_dir())
+        .cloned();
+
+    claude_prism_desktop_lib::run(initial_path)
 }

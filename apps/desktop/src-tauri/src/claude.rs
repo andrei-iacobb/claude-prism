@@ -1093,32 +1093,137 @@ pub async fn login_claude(window: WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// Detect the dominant project type by scanning top-level directory entries.
+#[derive(Debug, PartialEq)]
+enum ProjectType {
+    Latex,
+    Markdown,
+    Code,
+    General,
+}
+
+fn detect_project_type(project_path: &str) -> ProjectType {
+    let path = std::path::Path::new(project_path);
+    let entries = match std::fs::read_dir(path) {
+        Ok(e) => e,
+        Err(_) => return ProjectType::General,
+    };
+
+    let mut has_tex = false;
+    let mut has_md = false;
+    let mut has_code_marker = false;
+
+    for entry in entries.take(200).flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let lower = name.to_lowercase();
+
+        if lower.ends_with(".tex") || lower.ends_with(".ltx") {
+            has_tex = true;
+        } else if lower.ends_with(".md") || lower.ends_with(".markdown") {
+            has_md = true;
+        }
+
+        // Code project markers
+        if matches!(
+            lower.as_str(),
+            "cargo.toml"
+                | "package.json"
+                | "pyproject.toml"
+                | "go.mod"
+                | "pom.xml"
+                | "build.gradle"
+                | "makefile"
+                | "cmakelists.txt"
+                | ".gitignore"
+        ) {
+            has_code_marker = true;
+        }
+    }
+
+    if has_tex {
+        ProjectType::Latex
+    } else if has_code_marker {
+        ProjectType::Code
+    } else if has_md {
+        ProjectType::Markdown
+    } else {
+        ProjectType::General
+    }
+}
+
+/// Build a context-aware system prompt based on the project type.
+fn build_system_prompt(project_path: &str) -> String {
+    let project_type = detect_project_type(project_path);
+
+    let shared_rules = concat!(
+        "Follow these rules strictly:\n",
+        "1. PLANNING FIRST: Before making changes, use TodoWrite to create a step-by-step plan. ",
+        "Break large tasks into small, incremental steps (one section or one logical unit per step).\n",
+        "2. INCREMENTAL EDITS: Use the Edit tool to make small, targeted changes — one step at a time. ",
+        "NEVER write or rewrite an entire file at once. Always prefer editing existing content over replacing it wholesale.\n",
+        "3. STEP BY STEP: After each edit, mark the todo item as completed, then proceed to the next step. ",
+        "This lets the user review changes incrementally.\n",
+        "4. PRESERVE EXISTING CONTENT: Always read the file first. Keep existing structure intact. ",
+        "Only add or modify what is needed for the current step.\n",
+        "5. PYTHON: If a .venv/ exists in the project, it is already activated. ",
+        "Use `uv pip install` to add packages and `python` to run scripts.",
+    );
+
+    let context_rules = match project_type {
+        ProjectType::Latex => concat!(
+            "\n6. LaTeX BEST PRACTICES: Use proper sectioning (\\chapter, \\section, \\subsection), ",
+            "citations (\\cite), cross-references (\\label, \\ref), and BibTeX for bibliographies.\n",
+            "7. BIBLIOGRAPHY & ZOTERO: The user may have .bib files synced from their Zotero library. ",
+            "When bibliography context is provided in [Bibliography], use it to suggest proper citations. ",
+            "When asked to check references, verify that \\cite keys match entries in the .bib files. ",
+            "Suggest relevant citations from the bibliography when writing or reviewing content. ",
+            "Always prefer citing existing entries over inventing new references.\n",
+            "8. SKILLS: If scientific skills are installed in .claude/skills/, follow their guidelines ",
+            "for domain-specific tasks. Use skill-provided LaTeX packages (.sty) and code patterns.",
+        ).to_string(),
+        ProjectType::Markdown => concat!(
+            "\n6. MARKDOWN BEST PRACTICES: Use proper heading hierarchy (# > ## > ###), ",
+            "meaningful link text, and consistent formatting. Respect YAML frontmatter if present.\n",
+            "7. FILE ORGANIZATION: Help the user organize notes, link between files with [[wikilinks]] ",
+            "or standard markdown links, and maintain a clear structure.\n",
+            "8. TASK MANAGEMENT: When asked about tasks or todos, help track and organize them. ",
+            "Use checkboxes (- [ ] / - [x]) for task lists.",
+        ).to_string(),
+        ProjectType::Code => concat!(
+            "\n6. CODE BEST PRACTICES: Follow existing project patterns and conventions. ",
+            "Read existing code before writing new code. Match the project's style.\n",
+            "7. TESTING: Run existing tests after making changes. Write tests for new functionality.\n",
+            "8. DEPENDENCIES: Check existing dependencies before suggesting new ones. ",
+            "Use the project's package manager (npm, cargo, pip, etc.).",
+        ).to_string(),
+        ProjectType::General => concat!(
+            "\n6. GENERAL ASSISTANCE: You can help with any file type — markdown, code, config, text. ",
+            "Adapt your approach to the content type of each file.\n",
+            "7. TASK MANAGEMENT: Help the user organize and track tasks. ",
+            "Use TodoWrite for planning and checkboxes in markdown for task lists.",
+        ).to_string(),
+    };
+
+    let intro = match project_type {
+        ProjectType::Latex => "You are an AI assistant integrated into a LaTeX document editor (Prism). ",
+        ProjectType::Markdown => "You are an AI assistant integrated into a writing workspace (Prism). The project contains markdown files. ",
+        ProjectType::Code => "You are an AI assistant integrated into a coding workspace (Prism). ",
+        ProjectType::General => "You are an AI assistant integrated into a workspace (Prism). ",
+    };
+
+    format!("{}{}\n{}", intro, shared_rules, context_rules)
+}
+
 /// Common CLI flags shared across all Claude invocations.
-fn common_claude_args() -> Vec<String> {
+fn common_claude_args(project_path: &str) -> Vec<String> {
     vec![
         "--output-format".to_string(),
         "stream-json".to_string(),
         "--verbose".to_string(),
         "--dangerously-skip-permissions".to_string(),
         "--append-system-prompt".to_string(),
-        concat!(
-            "You are an AI assistant integrated into a LaTeX document editor (Prism). ",
-            "Follow these rules strictly:\n",
-            "1. PLANNING FIRST: Before making changes, use TodoWrite to create a step-by-step plan. ",
-            "Break large tasks into small, incremental steps (one section or one logical unit per step).\n",
-            "2. INCREMENTAL EDITS: Use the Edit tool to make small, targeted changes — one step at a time. ",
-            "NEVER write or rewrite an entire file at once. Always prefer editing existing content over replacing it wholesale.\n",
-            "3. STEP BY STEP: After each edit, mark the todo item as completed, then proceed to the next step. ",
-            "This lets the user review changes incrementally.\n",
-            "4. PRESERVE EXISTING CONTENT: Always read the file first. Keep the existing preamble, packages, ",
-            "and structure intact. Only add or modify what is needed for the current step.\n",
-            "5. LaTeX BEST PRACTICES: Use proper sectioning (\\chapter, \\section, \\subsection), ",
-            "citations (\\cite), cross-references (\\label, \\ref), and BibTeX for bibliographies.\n",
-            "6. SKILLS: If scientific skills are installed in .claude/skills/, follow their guidelines ",
-            "for domain-specific tasks. Use skill-provided LaTeX packages (.sty) and code patterns.\n",
-            "7. PYTHON: If a .venv/ exists in the project, it is already activated. ",
-            "Use `uv pip install` to add packages and `python` to run scripts."
-        ).to_string(),
+        build_system_prompt(project_path),
     ]
 }
 
@@ -1140,7 +1245,7 @@ pub async fn execute_claude_code(
         args.push("--model".to_string());
         args.push(m);
     }
-    args.extend(common_claude_args());
+    args.extend(common_claude_args(&project_path));
 
     let cmd = create_command(&claude_path, args, &project_path, effort_level.as_deref());
     spawn_claude_process(window, cmd, tab_id).await
@@ -1162,7 +1267,7 @@ pub async fn continue_claude_code(
         args.push("--model".to_string());
         args.push(m);
     }
-    args.extend(common_claude_args());
+    args.extend(common_claude_args(&project_path));
 
     let cmd = create_command(&claude_path, args, &project_path, effort_level.as_deref());
     spawn_claude_process(window, cmd, tab_id).await
@@ -1185,7 +1290,7 @@ pub async fn resume_claude_code(
         args.push("--model".to_string());
         args.push(m);
     }
-    args.extend(common_claude_args());
+    args.extend(common_claude_args(&project_path));
 
     let cmd = create_command(&claude_path, args, &project_path, effort_level.as_deref());
     spawn_claude_process(window, cmd, tab_id).await
@@ -1647,7 +1752,7 @@ mod tests {
 
     #[test]
     fn test_common_claude_args_has_required_flags() {
-        let args = common_claude_args();
+        let args = common_claude_args("/tmp");
         assert!(args.contains(&"--output-format".to_string()));
         assert!(args.contains(&"stream-json".to_string()));
         assert!(args.contains(&"--verbose".to_string()));
@@ -1656,14 +1761,51 @@ mod tests {
     }
 
     #[test]
-    fn test_common_claude_args_system_prompt_mentions_latex() {
-        let args = common_claude_args();
-        let prompt_idx = args
-            .iter()
-            .position(|a| a == "--append-system-prompt")
-            .unwrap();
-        let prompt = &args[prompt_idx + 1];
+    fn test_detect_project_type_latex() {
+        let dir = std::env::temp_dir().join("prism_test_latex");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("main.tex"), "").unwrap();
+        assert_eq!(detect_project_type(dir.to_str().unwrap()), ProjectType::Latex);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_project_type_code() {
+        let dir = std::env::temp_dir().join("prism_test_code");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("package.json"), "{}").unwrap();
+        assert_eq!(detect_project_type(dir.to_str().unwrap()), ProjectType::Code);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_project_type_markdown() {
+        let dir = std::env::temp_dir().join("prism_test_md");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("notes.md"), "# Hello").unwrap();
+        assert_eq!(detect_project_type(dir.to_str().unwrap()), ProjectType::Markdown);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_system_prompt_latex_project() {
+        let dir = std::env::temp_dir().join("prism_test_latex_prompt");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("main.tex"), "").unwrap();
+        let prompt = build_system_prompt(dir.to_str().unwrap());
         assert!(prompt.contains("LaTeX"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_system_prompt_markdown_project() {
+        let dir = std::env::temp_dir().join("prism_test_md_prompt");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("readme.md"), "# Hi").unwrap();
+        let prompt = build_system_prompt(dir.to_str().unwrap());
+        assert!(prompt.contains("markdown"));
+        assert!(!prompt.contains("LaTeX"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // --- create_command ---
