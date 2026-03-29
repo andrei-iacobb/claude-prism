@@ -4,11 +4,13 @@ import {
   Maximize2Icon,
   MessageCircleIcon,
   Minimize2Icon,
+  PanelRightIcon,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useClaudeChatStore } from "@/stores/claude-chat-store";
 import { useClaudeEvents } from "@/hooks/use-claude-events";
+import { useUIStore } from "@/stores/ui-store";
 import { ChatMessages } from "./chat-messages";
 import { ChatComposer } from "./chat-composer";
 import { ChatTabBar } from "./chat-tab-bar";
@@ -179,12 +181,25 @@ export function ClaudeChatDrawer() {
                 <div className="h-1 w-10 rounded-full bg-muted-foreground/30 transition-all group-hover:w-8" />
                 <ChevronDownIcon className="size-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </div>
-              <div className="absolute top-1/2 left-2 flex -translate-y-1/2 items-center gap-1">
+              <div className="absolute top-1/2 left-2 flex -translate-y-1/2 items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    useUIStore.getState().setChatViewMode("split");
+                  }}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label="Split view"
+                  title="Split view"
+                >
+                  <PanelRightIcon className="size-4" />
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsExpanded(true)}
                   className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   aria-label="Fullscreen"
+                  title="Fullscreen"
                 >
                   <Maximize2Icon className="size-4" />
                 </button>

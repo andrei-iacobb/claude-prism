@@ -122,7 +122,7 @@
   html {
     @apply overscroll-y-none scroll-smooth;
     /* macOS overlay titlebar inset — traffic lights safe area */
-    --titlebar-height: 18px;
+    --titlebar-height: 30px;
     --traffic-light-width: 70px;
   }
   body {
@@ -172,8 +172,16 @@
   cursor: text;
 }
 
+/* Selected text gets a visible highlight: dark text on yellow-ish background */
 .mupdf-text-layer text::selection {
-  fill: hsla(220, 100%, 50%, 0.3);
+  fill: hsl(220, 70%, 25%);
+  background: hsla(50, 100%, 55%, 0.4);
+}
+
+/* Dark mode: lighter text fill for contrast */
+.dark .mupdf-text-layer text::selection {
+  fill: hsl(210, 100%, 80%);
+  background: hsla(220, 80%, 50%, 0.35);
 }
 
 /* MuPDF link overlay layer */

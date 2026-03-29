@@ -2,9 +2,55 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useDocumentStore } from "./document-store";
 import { useHistoryStore } from "./history-store";
+import { useZoteroStore } from "./zotero-store";
 import { createLogger } from "@/lib/debug/logger";
 
 const log = createLogger("claude");
+
+/**
+ * Build bibliography context from synced Zotero .bib files in the project.
+ * Returns a context string with bib entries, or null if none available.
+ * Caps at ~8000 chars to avoid bloating the prompt.
+ */
+function buildBibliographyContext(projectRoot: string): string | null {
+  const zoteroState = useZoteroStore.getState();
+  if (!zoteroState.isAuthenticated) return null;
+
+  const synced = zoteroState.syncedCollections[projectRoot];
+  if (!synced || Object.keys(synced).length === 0) return null;
+
+  const docState = useDocumentStore.getState();
+  const bibFiles = docState.files.filter(
+    (f) => f.name.endsWith(".bib") && f.content,
+  );
+  if (bibFiles.length === 0) return null;
+
+  // Collect bib content, capped for prompt size
+  const MAX_BIB_CHARS = 8000;
+  let bibContent = "";
+  const fileNames: string[] = [];
+
+  for (const file of bibFiles) {
+    if (!file.content) continue;
+    fileNames.push(file.relativePath);
+    const remaining = MAX_BIB_CHARS - bibContent.length;
+    if (remaining <= 0) break;
+    if (file.content.length <= remaining) {
+      bibContent += file.content + "\n";
+    } else {
+      bibContent += file.content.slice(0, remaining) + "\n... (truncated)\n";
+      break;
+    }
+  }
+
+  if (!bibContent.trim()) return null;
+
+  const totalEntries = (bibContent.match(/@\w+\{/g) || []).length;
+  return (
+    `[Bibliography from Zotero — ${totalEntries} entries across ${fileNames.join(", ")}]\n` +
+    bibContent
+  );
+}
 
 /** Convert a character offset to 1-based line:col */
 export function offsetToLineCol(
@@ -372,6 +418,13 @@ export const useClaudeChatStore = create<ClaudeChatState>()((set, get) => ({
         ctx += `\n[Selection: @${activeFile.relativePath}:${startLC.line}:${startLC.col}-${endLC.line}:${endLC.col}]`;
         ctx += `\n[Selected text:\n${selectedText}\n]`;
       }
+
+      // Inject Zotero bibliography context when available
+      const bibCtx = buildBibliographyContext(projectPath);
+      if (bibCtx) {
+        ctx += `\n${bibCtx}`;
+      }
+
       prompt = `${ctx}\n\n${userPrompt}`;
     }
     log.info("invoking CLI", {

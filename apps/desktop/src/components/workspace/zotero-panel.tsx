@@ -150,57 +150,64 @@ export function ZoteroPanel() {
 }
 
 /** Header rendered separately by Sidebar so it sits outside the resizable panel content */
+/** Zotero label (icon + name) for use in a collapsible sidebar section header. */
 export function ZoteroHeader() {
+  const isAuthenticated = useZoteroStore((s) => s.isAuthenticated);
+
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={cn(
+          "size-1.5 rounded-full",
+          isAuthenticated ? "bg-foreground" : "bg-muted-foreground/30",
+        )}
+      />
+      <span className="font-medium text-xs">Zotero</span>
+    </div>
+  );
+}
+
+/** Zotero action buttons (refresh, settings) for use in sidebar section header. */
+export function ZoteroHeaderActions() {
   const isAuthenticated = useZoteroStore((s) => s.isAuthenticated);
   const username = useZoteroStore((s) => s.username);
   const isLoadingCollections = useZoteroStore((s) => s.isLoadingCollections);
   const disconnect = useZoteroStore((s) => s.disconnect);
   const loadCollections = useZoteroStore((s) => s.loadCollections);
 
+  if (!isAuthenticated) return null;
+
   return (
-    <div className="relative flex w-full items-center justify-center px-3">
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            isAuthenticated ? "bg-foreground" : "bg-muted-foreground/30",
-          )}
+    <div className="flex items-center gap-1">
+      <button
+        className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+        onClick={loadCollections}
+        title="Refresh"
+      >
+        <RefreshCwIcon
+          className={cn("size-3.5", isLoadingCollections && "animate-spin")}
         />
-        <span className="font-medium text-xs">Zotero</span>
-      </div>
-      {isAuthenticated && (
-        <div className="absolute right-3 flex items-center gap-1">
-          <button
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
-            onClick={loadCollections}
-            title="Refresh"
-          >
-            <RefreshCwIcon
-              className={cn("size-3.5", isLoadingCollections && "animate-spin")}
-            />
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground">
+            <SettingsIcon className="size-3.5" />
           </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="rounded p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground">
-                <SettingsIcon className="size-3.5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <div className="flex items-center gap-2 px-2 py-1">
-                <UserIcon className="size-3.5 text-muted-foreground" />
-                <span className="truncate text-muted-foreground text-xs">
-                  {username}
-                </span>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={disconnect}>
-                <LogOutIcon className="mr-2 size-3.5" />
-                Disconnect
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          <div className="flex items-center gap-2 px-2 py-1">
+            <UserIcon className="size-3.5 text-muted-foreground" />
+            <span className="truncate text-muted-foreground text-xs">
+              {username}
+            </span>
+          </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={disconnect}>
+            <LogOutIcon className="mr-2 size-3.5" />
+            Disconnect
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -292,7 +299,7 @@ function CollectionRow({
   const isSynced = !!syncInfo;
 
   return (
-    <div className="group flex items-center gap-1.5 px-2 py-0.5">
+    <div data-sidebar-item className="group flex items-center gap-1.5 px-2 py-0.5">
       <span className="shrink-0 text-muted-foreground">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">
