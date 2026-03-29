@@ -38,8 +38,7 @@ export const useUIStore = create<UIState>()(
       setChatViewMode: (mode) =>
         set({ chatViewMode: mode, chatPanelOpen: mode === "split" }),
       setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
-      toggleChatPanel: () =>
-        set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
+      toggleChatPanel: () => set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
       setPanelOrder: (order) => set({ panelOrder: order }),
       movePanelLeft: (id) => {
         const order = [...get().panelOrder];
@@ -58,7 +57,8 @@ export const useUIStore = create<UIState>()(
         }
       },
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      toggleSidebar: () =>
+        set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       collapsePanel: (id) => {
         const next = new Set(get().collapsedPanels);
         next.add(id);

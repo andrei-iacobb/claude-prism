@@ -299,7 +299,10 @@ function CollectionRow({
   const isSynced = !!syncInfo;
 
   return (
-    <div data-sidebar-item className="group flex items-center gap-1.5 px-2 py-0.5">
+    <div
+      data-sidebar-item
+      className="group flex items-center gap-1.5 px-2 py-0.5"
+    >
       <span className="shrink-0 text-muted-foreground">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1">

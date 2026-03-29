@@ -91,7 +91,8 @@ export function EditorToolbar({
   });
   const projectRoot = useDocumentStore((s) => s.projectRoot);
   const toolbarItemsRef = useRef<HTMLDivElement>(null);
-  const { hasOverflow: toolbarOverflow, hiddenIds } = useToolbarOverflow(toolbarItemsRef);
+  const { hasOverflow: toolbarOverflow, hiddenIds } =
+    useToolbarOverflow(toolbarItemsRef);
 
   const [editors, setEditors] = useState<EditorInfo[]>([]);
 
@@ -253,8 +254,14 @@ export function EditorToolbar({
             {fileName}
           </span>
         </div>
-        <div ref={toolbarItemsRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-2">
-          <div data-toolbar-item="formatting" className="flex shrink-0 items-center gap-1">
+        <div
+          ref={toolbarItemsRef}
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-2"
+        >
+          <div
+            data-toolbar-item="formatting"
+            className="flex shrink-0 items-center gap-1"
+          >
             <div className="mr-1 h-4 w-px shrink-0 bg-border" />
             <TooltipIconButton
               tooltip="Bold (**text**)"
@@ -275,7 +282,10 @@ export function EditorToolbar({
               <CodeIcon className="size-4" />
             </TooltipIconButton>
           </div>
-          <div data-toolbar-item="structure" className="flex shrink-0 items-center gap-1">
+          <div
+            data-toolbar-item="structure"
+            className="flex shrink-0 items-center gap-1"
+          >
             <div className="mx-1 h-4 w-px shrink-0 bg-border" />
             <TooltipIconButton
               tooltip="Heading 1"
@@ -296,7 +306,10 @@ export function EditorToolbar({
               <ListIcon className="size-4" />
             </TooltipIconButton>
           </div>
-          <div data-toolbar-item="extras" className="flex shrink-0 items-center gap-1">
+          <div
+            data-toolbar-item="extras"
+            className="flex shrink-0 items-center gap-1"
+          >
             <div className="mx-1 h-4 w-px shrink-0 bg-border" />
             <TooltipIconButton
               tooltip="Link"
@@ -317,7 +330,10 @@ export function EditorToolbar({
               <MdMathIcon className="size-4" />
             </TooltipIconButton>
           </div>
-          <div data-toolbar-item="panel-controls" className="flex shrink-0 items-center">
+          <div
+            data-toolbar-item="panel-controls"
+            className="flex shrink-0 items-center"
+          >
             <PanelMoveControls panelId="editor" />
             <SplitViewToggle />
             {editors.length === 1 && (
@@ -434,107 +450,122 @@ export function EditorToolbar({
           {fileName}
         </span>
       </div>
-      <div ref={toolbarItemsRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-2">
-      <div data-toolbar-item="formatting" className="flex shrink-0 items-center gap-1">
-        <div className="mr-1 h-4 w-px shrink-0 bg-border" />
-        <TooltipIconButton
-          tooltip="Bold (\\textbf)"
-          onClick={() => insertText("\\textbf{", "}")}
+      <div
+        ref={toolbarItemsRef}
+        className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden px-2"
+      >
+        <div
+          data-toolbar-item="formatting"
+          className="flex shrink-0 items-center gap-1"
         >
-          <BoldIcon className="size-4" />
-        </TooltipIconButton>
-        <TooltipIconButton
-          tooltip="Italic (\\textit)"
-          onClick={() => insertText("\\textit{", "}")}
-        >
-          <ItalicIcon className="size-4" />
-        </TooltipIconButton>
-        <TooltipIconButton
-          tooltip="Code (\\texttt)"
-          onClick={() => insertText("\\texttt{", "}")}
-        >
-          <CodeIcon className="size-4" />
-        </TooltipIconButton>
-      </div>
-      <div data-toolbar-item="structure" className="flex shrink-0 items-center gap-1">
-        <div className="mx-1 h-4 w-px shrink-0 bg-border" />
-        <TooltipIconButton
-          tooltip="Section"
-          onClick={() => insertText("\\section{", "}")}
-        >
-          <Heading1Icon className="size-4" />
-        </TooltipIconButton>
-        <TooltipIconButton
-          tooltip="Subsection"
-          onClick={() => insertText("\\subsection{", "}")}
-        >
-          <Heading2Icon className="size-4" />
-        </TooltipIconButton>
-        <TooltipIconButton
-          tooltip="List item"
-          onClick={() => insertText("\\item ")}
-        >
-          <ListIcon className="size-4" />
-        </TooltipIconButton>
-      </div>
-      <div data-toolbar-item="math" className="flex shrink-0 items-center gap-1">
-        <div className="mx-1 h-4 w-px shrink-0 bg-border" />
-        <TooltipIconButton
-          tooltip="Inline math ($...$)"
-          onClick={() => wrapSelection("$")}
-        >
-          <FunctionSquareIcon className="size-4" />
-        </TooltipIconButton>
-        <TooltipIconButton
-          tooltip="Display math (\\[...\\])"
-          onClick={() => insertText("\\[\n  ", "\n\\]")}
-        >
-          <span className="font-mono text-xs">∫</span>
-        </TooltipIconButton>
-        <div className="mx-1 h-4 w-px shrink-0 bg-border" />
-        <TooltipIconButton
-          tooltip="Citation (\\cite)"
-          onClick={() => insertText("\\cite{", "}")}
-        >
-          <BookMarkedIcon className="size-4" />
-        </TooltipIconButton>
-      </div>
-      <div data-toolbar-item="panel-controls" className="flex shrink-0 items-center">
-        <PanelMoveControls panelId="editor" />
-        <SplitViewToggle />
-        {editors.length === 1 && (
+          <div className="mr-1 h-4 w-px shrink-0 bg-border" />
           <TooltipIconButton
-            tooltip={`Open in ${editors[0].name}`}
-            onClick={() => openInEditor(editors[0].id)}
+            tooltip="Bold (\\textbf)"
+            onClick={() => insertText("\\textbf{", "}")}
           >
-            <ExternalLinkIcon className="size-4" />
+            <BoldIcon className="size-4" />
           </TooltipIconButton>
-        )}
-        {editors.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-6 p-1"
-                title="Open in Editor"
-              >
-                <ExternalLinkIcon className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {editors.map((editor) => (
-                <DropdownMenuItem
-                  key={editor.id}
-                  onClick={() => openInEditor(editor.id)}
+          <TooltipIconButton
+            tooltip="Italic (\\textit)"
+            onClick={() => insertText("\\textit{", "}")}
+          >
+            <ItalicIcon className="size-4" />
+          </TooltipIconButton>
+          <TooltipIconButton
+            tooltip="Code (\\texttt)"
+            onClick={() => insertText("\\texttt{", "}")}
+          >
+            <CodeIcon className="size-4" />
+          </TooltipIconButton>
+        </div>
+        <div
+          data-toolbar-item="structure"
+          className="flex shrink-0 items-center gap-1"
+        >
+          <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+          <TooltipIconButton
+            tooltip="Section"
+            onClick={() => insertText("\\section{", "}")}
+          >
+            <Heading1Icon className="size-4" />
+          </TooltipIconButton>
+          <TooltipIconButton
+            tooltip="Subsection"
+            onClick={() => insertText("\\subsection{", "}")}
+          >
+            <Heading2Icon className="size-4" />
+          </TooltipIconButton>
+          <TooltipIconButton
+            tooltip="List item"
+            onClick={() => insertText("\\item ")}
+          >
+            <ListIcon className="size-4" />
+          </TooltipIconButton>
+        </div>
+        <div
+          data-toolbar-item="math"
+          className="flex shrink-0 items-center gap-1"
+        >
+          <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+          <TooltipIconButton
+            tooltip="Inline math ($...$)"
+            onClick={() => wrapSelection("$")}
+          >
+            <FunctionSquareIcon className="size-4" />
+          </TooltipIconButton>
+          <TooltipIconButton
+            tooltip="Display math (\\[...\\])"
+            onClick={() => insertText("\\[\n  ", "\n\\]")}
+          >
+            <span className="font-mono text-xs">∫</span>
+          </TooltipIconButton>
+          <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+          <TooltipIconButton
+            tooltip="Citation (\\cite)"
+            onClick={() => insertText("\\cite{", "}")}
+          >
+            <BookMarkedIcon className="size-4" />
+          </TooltipIconButton>
+        </div>
+        <div
+          data-toolbar-item="panel-controls"
+          className="flex shrink-0 items-center"
+        >
+          <PanelMoveControls panelId="editor" />
+          <SplitViewToggle />
+          {editors.length === 1 && (
+            <TooltipIconButton
+              tooltip={`Open in ${editors[0].name}`}
+              onClick={() => openInEditor(editors[0].id)}
+            >
+              <ExternalLinkIcon className="size-4" />
+            </TooltipIconButton>
+          )}
+          {editors.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 p-1"
+                  title="Open in Editor"
                 >
-                  {editor.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+                  <ExternalLinkIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {editors.map((editor) => (
+                  <DropdownMenuItem
+                    key={editor.id}
+                    onClick={() => openInEditor(editor.id)}
+                  >
+                    {editor.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
       {toolbarOverflow && (
         <DropdownMenu>
@@ -572,7 +603,9 @@ export function EditorToolbar({
                   <Heading1Icon className="mr-2 size-3.5" />
                   Section
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => insertText("\\subsection{", "}")}>
+                <DropdownMenuItem
+                  onClick={() => insertText("\\subsection{", "}")}
+                >
                   <Heading2Icon className="mr-2 size-3.5" />
                   Subsection
                 </DropdownMenuItem>
@@ -589,8 +622,12 @@ export function EditorToolbar({
                   <FunctionSquareIcon className="mr-2 size-3.5" />
                   Inline math
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => insertText("\\[\n  ", "\n\\]")}>
-                  <span className="mr-2 w-3.5 text-center font-mono text-xs">∫</span>
+                <DropdownMenuItem
+                  onClick={() => insertText("\\[\n  ", "\n\\]")}
+                >
+                  <span className="mr-2 w-3.5 text-center font-mono text-xs">
+                    ∫
+                  </span>
                   Display math
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => insertText("\\cite{", "}")}>
@@ -633,10 +670,7 @@ function SidebarToggle() {
 
   return (
     <>
-      <TooltipIconButton
-        tooltip="Show sidebar"
-        onClick={toggleSidebar}
-      >
+      <TooltipIconButton tooltip="Show sidebar" onClick={toggleSidebar}>
         <PanelLeftIcon className="size-4" />
       </TooltipIconButton>
       <div className="mx-1 h-4 w-px bg-border" />

@@ -533,13 +533,12 @@ export function Sidebar() {
     // Auto-append .tex if no extension provided
     const finalName = /\.\w+$/.test(name) ? name : `${name}.tex`;
     const lower = finalName.toLowerCase();
-    const type: "tex" | "image" | "md" = /\.(png|jpg|jpeg|gif|svg|bmp|webp)$/.test(
-      lower,
-    )
-      ? "image"
-      : /\.(md|markdown)$/.test(lower)
-        ? "md"
-        : "tex";
+    const type: "tex" | "image" | "md" =
+      /\.(png|jpg|jpeg|gif|svg|bmp|webp)$/.test(lower)
+        ? "image"
+        : /\.(md|markdown)$/.test(lower)
+          ? "md"
+          : "tex";
     createNewFile(finalName, type, addDialogFolder);
     setNewFileName("");
     setNameError("");
@@ -696,7 +695,12 @@ export function Sidebar() {
 
       {/* Resizable & collapsible sidebar sections */}
       <div ref={panelGroupRef} className="min-h-0 flex-1">
-        <PanelGroup direction="vertical" autoSaveId={isLatexProject ? "sidebar-sections-latex" : "sidebar-sections-md"}>
+        <PanelGroup
+          direction="vertical"
+          autoSaveId={
+            isLatexProject ? "sidebar-sections-latex" : "sidebar-sections-md"
+          }
+        >
           {/* Files */}
           <Panel
             ref={filesPanelRef}
@@ -722,7 +726,10 @@ export function Sidebar() {
                     size="icon"
                     className="size-5"
                     title="Refresh"
-                    onClick={(e) => { e.stopPropagation(); refreshFiles(); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      refreshFiles();
+                    }}
                   >
                     <RefreshCwIcon className="size-3" />
                   </Button>
@@ -769,7 +776,9 @@ export function Sidebar() {
                 >
                   <ContextMenu>
                     <ContextMenuTrigger asChild>
-                      <DroppableRoot nativeDragOver={nativeDragOver === "__root__"}>
+                      <DroppableRoot
+                        nativeDragOver={nativeDragOver === "__root__"}
+                      >
                         {tree.map((node) => (
                           <FileTreeNode
                             key={node.relativePath}
@@ -860,7 +869,9 @@ export function Sidebar() {
                           key={index}
                           data-sidebar-item
                           className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
-                          style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
+                          style={{
+                            paddingLeft: `${(item.level - 1) * 12 + 8}px`,
+                          }}
                           onClick={() => handleTocClick(item.line)}
                         >
                           <HashIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -1347,9 +1358,7 @@ function OverflowIndicator({
           <ChevronDownIcon className="size-3" />
         )}
         {count > 0 && (
-          <span className="font-medium text-[10px] leading-none">
-            +{count}
-          </span>
+          <span className="font-medium text-[10px] leading-none">+{count}</span>
         )}
       </button>
     </div>
@@ -1376,11 +1385,17 @@ function SidebarSection({
   children: React.ReactNode;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
-  const { canScrollUp, canScrollDown, hiddenAbove, hiddenBelow, scrollUp, scrollDown } =
-    useScrollOverflow(contentRef);
+  const {
+    canScrollUp,
+    canScrollDown,
+    hiddenAbove,
+    hiddenBelow,
+    scrollUp,
+    scrollDown,
+  } = useScrollOverflow(contentRef);
 
   return (
-    <div className="flex h-full flex-col border-sidebar-border border-t overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden border-sidebar-border border-t">
       <button
         type="button"
         className="relative flex h-8 w-full shrink-0 items-center gap-2 px-3 transition-colors hover:bg-sidebar-accent/30"

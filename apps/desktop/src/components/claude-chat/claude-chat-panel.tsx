@@ -18,7 +18,9 @@ export function ClaudeChatPanel() {
       {/* Header */}
       <div className="scrollbar-none flex h-[calc(36px+var(--titlebar-height))] items-center justify-between overflow-x-auto border-border border-b px-2 pt-[var(--titlebar-height)]">
         <div className="flex items-center gap-1">
-          <span className="px-1 font-medium text-foreground text-xs">Claude</span>
+          <span className="px-1 font-medium text-foreground text-xs">
+            Claude
+          </span>
           <PanelMoveControls panelId="chat" />
         </div>
         <button

@@ -110,7 +110,7 @@ export function SelectionToast({
     <div
       ref={toastRef}
       className={cn(
-        "absolute z-30 animate-in fade-in slide-in-from-bottom-1 duration-150",
+        "fade-in slide-in-from-bottom-1 absolute z-30 animate-in duration-150",
         isExpanded ? "w-80" : "max-w-80",
       )}
       style={{

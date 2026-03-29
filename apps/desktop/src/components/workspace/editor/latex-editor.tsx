@@ -66,12 +66,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  RotateCcwIcon,
-  TagIcon,
-  CopyIcon,
-  XIcon,
-} from "lucide-react";
+import { RotateCcwIcon, TagIcon, CopyIcon, XIcon } from "lucide-react";
 import { ClaudeChatDrawer } from "@/components/claude-chat/claude-chat-drawer";
 import { useUIStore } from "@/stores/ui-store";
 import { ProposedChangesPanel } from "@/components/claude-chat/proposed-changes-panel";
@@ -167,7 +162,9 @@ export function LatexEditor() {
   const { resolvedTheme } = useTheme();
 
   const compileRef = useRef<() => void>(() => {});
-  const liveCompileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const liveCompileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const isSearchOpenRef = useRef(false);
   const themeCompartmentRef = useRef(new Compartment());
   const mergeCompartmentRef = useRef(new Compartment());
@@ -479,7 +476,11 @@ export function LatexEditor() {
       if (update.docChanged) {
         setContent(update.state.doc.toString());
         // Live compile: debounce 1.5s after last keystroke (LaTeX only)
-        if (activeFile?.type === "tex" || activeFile?.type === "bib" || activeFile?.type === "style") {
+        if (
+          activeFile?.type === "tex" ||
+          activeFile?.type === "bib" ||
+          activeFile?.type === "style"
+        ) {
           if (liveCompileTimerRef.current) {
             clearTimeout(liveCompileTimerRef.current);
           }
@@ -1075,7 +1076,13 @@ export function LatexEditor() {
       {/* Toolbar — adapts to file type */}
       <EditorToolbar
         editorView={viewRef}
-        fileType={isPdf || isImage ? "image" : activeFile?.type === "md" ? "md" : undefined}
+        fileType={
+          isPdf || isImage
+            ? "image"
+            : activeFile?.type === "md"
+              ? "md"
+              : undefined
+        }
         imageScale={isPdf || isImage ? imageScale : undefined}
         onImageScaleChange={isPdf || isImage ? setImageScale : undefined}
         cropMode={isImage ? cropMode : undefined}

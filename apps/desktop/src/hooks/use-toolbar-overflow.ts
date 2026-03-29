@@ -6,9 +6,10 @@ import { useEffect, useRef, useState } from "react";
  * Items that don't fully fit are visually hidden (display:none) and their IDs
  * are returned in hiddenIds so the overflow menu can render them.
  */
-export function useToolbarOverflow(
-  ref: React.RefObject<HTMLElement | null>,
-): { hasOverflow: boolean; hiddenIds: Set<string> } {
+export function useToolbarOverflow(ref: React.RefObject<HTMLElement | null>): {
+  hasOverflow: boolean;
+  hiddenIds: Set<string>;
+} {
   const [state, setState] = useState<{
     hasOverflow: boolean;
     hiddenIds: Set<string>;
@@ -50,7 +51,7 @@ export function useToolbarOverflow(
 
         setState((prev) => {
           if (
-            prev.hasOverflow === (hidden.size > 0) &&
+            prev.hasOverflow === hidden.size > 0 &&
             prev.hiddenIds.size === hidden.size &&
             [...hidden].every((id) => prev.hiddenIds.has(id))
           ) {

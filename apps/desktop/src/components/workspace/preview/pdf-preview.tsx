@@ -222,7 +222,8 @@ function PdfPreviewInner() {
   );
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const toolbarItemsRef = useRef<HTMLDivElement>(null);
-  const { hasOverflow: toolbarOverflow, hiddenIds } = useToolbarOverflow(toolbarItemsRef);
+  const { hasOverflow: toolbarOverflow, hiddenIds } =
+    useToolbarOverflow(toolbarItemsRef);
 
   const handleTextClick = useCallback(
     (text: string) => {
@@ -877,7 +878,10 @@ function PdfPreviewInner() {
         >
           {pdfData && (
             <>
-              <div data-toolbar-item="page-nav" className="flex shrink-0 items-center gap-1">
+              <div
+                data-toolbar-item="page-nav"
+                className="flex shrink-0 items-center gap-1"
+              >
                 <Button
                   variant="ghost"
                   size="icon"
@@ -930,7 +934,10 @@ function PdfPreviewInner() {
                   <ChevronDownIcon className="size-3.5" />
                 </Button>
               </div>
-              <div data-toolbar-item="zoom" className="flex shrink-0 items-center gap-1">
+              <div
+                data-toolbar-item="zoom"
+                className="flex shrink-0 items-center gap-1"
+              >
                 <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <Button
                   variant="ghost"
@@ -961,7 +968,10 @@ function PdfPreviewInner() {
                     }
                   }}
                 >
-                  <SelectTrigger size="sm" className="h-7! w-auto shrink-0 text-xs">
+                  <SelectTrigger
+                    size="sm"
+                    className="h-7! w-auto shrink-0 text-xs"
+                  >
                     <SelectValue>
                       {fitMode === "fit-width"
                         ? "Fit width"
@@ -982,7 +992,10 @@ function PdfPreviewInner() {
                   </SelectContent>
                 </Select>
               </div>
-              <div data-toolbar-item="capture" className="flex shrink-0 items-center">
+              <div
+                data-toolbar-item="capture"
+                className="flex shrink-0 items-center"
+              >
                 <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <Button
                   variant={captureMode ? "default" : "secondary"}
@@ -996,13 +1009,18 @@ function PdfPreviewInner() {
                   title={`Capture & Ask (${navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"})`}
                 >
                   <CrosshairIcon className="size-3.5 shrink-0" />
-                  <span className="@[36rem]/pv:inline hidden">Capture & Ask</span>
+                  <span className="@[36rem]/pv:inline hidden">
+                    Capture & Ask
+                  </span>
                   <kbd className="pointer-events-none ml-0.5 @[36rem]/pv:inline hidden rounded border border-background/30 bg-background/20 px-1 py-0.5 font-medium text-[10px] text-background leading-none">
                     {navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"}
                   </kbd>
                 </Button>
               </div>
-              <div data-toolbar-item="export" className="flex shrink-0 items-center">
+              <div
+                data-toolbar-item="export"
+                className="flex shrink-0 items-center"
+              >
                 <div className="mx-1 h-4 w-px shrink-0 bg-border" />
                 <Button
                   variant="ghost"
@@ -1051,11 +1069,17 @@ function PdfPreviewInner() {
             <DropdownMenuContent align="end">
               {hiddenIds.has("page-nav") && (
                 <>
-                  <DropdownMenuItem onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                  <DropdownMenuItem
+                    onClick={() => goToPage(currentPage - 1)}
+                    disabled={currentPage <= 1}
+                  >
                     <ChevronUpIcon className="mr-2 size-3.5" />
                     Previous page ({currentPage}/{numPages})
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= numPages}>
+                  <DropdownMenuItem
+                    onClick={() => goToPage(currentPage + 1)}
+                    disabled={currentPage >= numPages}
+                  >
                     <ChevronDownIcon className="mr-2 size-3.5" />
                     Next page
                   </DropdownMenuItem>
@@ -1088,7 +1112,11 @@ function PdfPreviewInner() {
                 </DropdownMenuItem>
               )}
               {hiddenIds.has("history") && (
-                <DropdownMenuItem onClick={() => {/* History opens as popover, not menu item */}}>
+                <DropdownMenuItem
+                  onClick={() => {
+                    /* History opens as popover, not menu item */
+                  }}
+                >
                   <HistoryIcon className="mr-2 size-3.5" />
                   History
                 </DropdownMenuItem>

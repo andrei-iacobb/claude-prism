@@ -1,4 +1,11 @@
-import { type ReactNode, Fragment, useRef, useCallback, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  Fragment,
+  useRef,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import {
   Panel,
   PanelGroup,
@@ -55,7 +62,10 @@ export function getPanelRef(id: string) {
   return panelRefs.get(id) ?? null;
 }
 
-export function registerPanelRef(id: string, ref: ImperativePanelHandle | null) {
+export function registerPanelRef(
+  id: string,
+  ref: ImperativePanelHandle | null,
+) {
   if (ref) panelRefs.set(id, ref);
   else panelRefs.delete(id);
 }
@@ -144,7 +154,9 @@ export function WorkspaceLayout() {
                 <PanelResizeHandle className="w-px bg-border transition-colors hover:bg-ring" />
                 <CollapsiblePanel
                   panelId={panelId}
-                  defaultSize={isSplit ? config.defaultSizeSplit : config.defaultSize}
+                  defaultSize={
+                    isSplit ? config.defaultSizeSplit : config.defaultSize
+                  }
                   minSize={config.minSize}
                   maxSize={config.maxSize}
                   onCollapse={() => collapsePanel(panelId)}

@@ -68,7 +68,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return {
         terminals: remaining,
         activeTerminalId: needNewActive
-          ? remaining[remaining.length - 1]?.id ?? null
+          ? (remaining[remaining.length - 1]?.id ?? null)
           : s.activeTerminalId,
         isOpen: remaining.length > 0 ? s.isOpen : false,
       };

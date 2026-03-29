@@ -6,12 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useTheme } from "next-themes";
 import { useTerminalStore } from "@/stores/terminal-store";
 import { useDocumentStore } from "@/stores/document-store";
-import {
-  PlusIcon,
-  XIcon,
-  TerminalIcon,
-  ChevronDownIcon,
-} from "lucide-react";
+import { PlusIcon, XIcon, TerminalIcon, ChevronDownIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -128,14 +123,11 @@ function TerminalInstance({ terminalId }: { terminalId: string }) {
     });
 
     // Listen for output from the PTY
-    const unlisten = listen<TerminalOutputEvent>(
-      "terminal-output",
-      (event) => {
-        if (event.payload.terminal_id === terminalId) {
-          terminal.write(event.payload.data);
-        }
-      },
-    );
+    const unlisten = listen<TerminalOutputEvent>("terminal-output", (event) => {
+      if (event.payload.terminal_id === terminalId) {
+        terminal.write(event.payload.data);
+      }
+    });
 
     // Send user input to the PTY
     const onData = terminal.onData((data) => {
@@ -163,12 +155,7 @@ function TerminalInstance({ terminalId }: { terminalId: string }) {
     };
   }, [terminalId, projectRoot, resolvedTheme, shell]);
 
-  return (
-    <div
-      ref={containerRef}
-      className="h-full w-full px-1 pt-1"
-    />
-  );
+  return <div ref={containerRef} className="h-full w-full px-1 pt-1" />;
 }
 
 export function TerminalPanel() {
@@ -231,7 +218,7 @@ export function TerminalPanel() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 px-2 text-xs text-muted-foreground"
+              className="h-6 gap-1 px-2 text-muted-foreground text-xs"
             >
               {AVAILABLE_SHELLS.find((s) => s.id === shell)?.label ?? "Shell"}
               <ChevronDownIcon className="size-3" />

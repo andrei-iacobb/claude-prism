@@ -109,11 +109,11 @@ export async function loadCachedPdf(
     const hashFile = await cachedHashPath(projectDir);
     if (!(await exists(hashFile))) return null;
 
-    const storedHash = new TextDecoder().decode(await readFile(hashFile)).trim();
+    const storedHash = new TextDecoder()
+      .decode(await readFile(hashFile))
+      .trim();
     if (storedHash !== currentHash) {
-      log.debug(
-        `Cache miss: hash changed (${storedHash} → ${currentHash})`,
-      );
+      log.debug(`Cache miss: hash changed (${storedHash} → ${currentHash})`);
       return null;
     }
 
@@ -121,9 +121,7 @@ export async function loadCachedPdf(
     if (!(await exists(pdfPath))) return null;
 
     const data = await readFile(pdfPath);
-    log.info(
-      `Loaded cached PDF (${(data.byteLength / 1024).toFixed(0)} KB)`,
-    );
+    log.info(`Loaded cached PDF (${(data.byteLength / 1024).toFixed(0)} KB)`);
     return new Uint8Array(data);
   } catch (err) {
     log.debug("Cache load failed", { error: String(err) });
