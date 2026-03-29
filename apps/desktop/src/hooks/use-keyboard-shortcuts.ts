@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useDocumentStore } from "@/stores/document-store";
+import { useTerminalStore } from "@/stores/terminal-store";
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
@@ -32,6 +33,12 @@ export function useKeyboardShortcuts() {
       ) {
         e.preventDefault();
         window.dispatchEvent(new CustomEvent("toggle-capture-mode"));
+      }
+
+      // Ctrl+` (backtick): Toggle terminal panel
+      if (e.ctrlKey && e.key === "`") {
+        e.preventDefault();
+        useTerminalStore.getState().toggleTerminal();
       }
 
       // Cmd+Shift+D (macOS) / Ctrl+Shift+D (others): Open debug window
