@@ -22,6 +22,7 @@ export type ProjectFileType =
   | "pdf"
   | "bib"
   | "style"
+  | "md"
   | "other";
 
 export interface FsProjectFile {
@@ -132,7 +133,8 @@ function getFileType(name: string): ProjectFileType | null {
   for (const ext of STYLE_EXTENSIONS) {
     if (lower.endsWith(ext)) return "style";
   }
-  // Show all other files (txt, md, sty downloaded packages, etc.)
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "md";
+  // Show all other files (txt, sty downloaded packages, etc.)
   return "other";
 }
 

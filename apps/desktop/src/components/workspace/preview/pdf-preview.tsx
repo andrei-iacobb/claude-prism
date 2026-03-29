@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   FileTextIcon,
-  SpellCheckIcon,
   AlertCircleIcon,
   LoaderIcon,
   RefreshCwIcon,
@@ -13,7 +12,16 @@ import {
   CrosshairIcon,
   ChevronUpIcon,
   ChevronDownIcon,
+  MoreHorizontalIcon,
 } from "lucide-react";
+import { useToolbarOverflow } from "@/hooks/use-toolbar-overflow";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { writeFile, mkdir, exists } from "@tauri-apps/plugin-fs";
 import { join } from "@tauri-apps/api/path";
 import {
@@ -44,12 +52,12 @@ import {
   synctexEdit,
   resolveCompileTarget,
   formatCompileError,
+  computeSourceHash,
+  loadCachedPdf,
+  saveCacheHash,
 } from "@/lib/latex-compiler";
 import { ErrorBoundary } from "react-error-boundary";
-import {
-  SelectionToolbar,
-  type ToolbarAction,
-} from "@/components/workspace/editor/selection-toolbar";
+import { SelectionToast } from "@/components/workspace/editor/selection-toast";
 import { save } from "@tauri-apps/plugin-dialog";
 import {
   PdfViewer,
@@ -58,21 +66,17 @@ import {
 } from "./pdf-viewer";
 import { resolveTexRoot } from "@/stores/document-store";
 import { createLogger } from "@/lib/debug/logger";
+import { PanelMoveControls } from "@/components/workspace/panel-move-controls";
+import { MarkdownPreview } from "./markdown-preview";
 
 const log = createLogger("pdf-preview");
 
-type FitMode = "fit-width" | "fit-height" | null;
+import { zoomCache } from "./pdf-zoom-cache";
 
-/** Per-root zoom state cache: rootFileId → { scale, fitMode } */
-const zoomCache = new Map<string, { scale: number; fitMode: FitMode }>();
+type FitMode = "fit-width" | "fit-height" | null;
 
 /** Max number of PdfViewer instances kept alive simultaneously. */
 const MAX_ALIVE_VIEWERS = 5;
-
-/** Clear zoom cache (e.g., on project close). */
-export function clearZoomCache(): void {
-  zoomCache.clear();
-}
 
 const ZOOM_OPTIONS = [
   { value: "0.5", label: "50%" },
@@ -86,6 +90,20 @@ const ZOOM_OPTIONS = [
 ];
 
 export function PdfPreview() {
+  const activeFileType = useDocumentStore((s) => {
+    const file = s.files.find((f) => f.id === s.activeFileId);
+    return file?.type ?? "tex";
+  });
+
+  // Delegate to markdown preview when editing a markdown file
+  if (activeFileType === "md") {
+    return <MarkdownPreview />;
+  }
+
+  return <PdfPreviewInner />;
+}
+
+function PdfPreviewInner() {
   const pdfRevision = useDocumentStore((s) => s.pdfRevision);
   const compileError = useDocumentStore((s) => s.compileError);
   const isCompiling = useDocumentStore((s) => s.isCompiling);
@@ -161,11 +179,50 @@ export function PdfPreview() {
     });
   }, [currentRootFileId, pdfData]);
 
+  // Auto-compile when switching to a root file that has no cached PDF
+  useEffect(() => {
+    if (!initialized || !projectRoot || isCompiling) return;
+    if (!currentRootFileId) return;
+    // Already have PDF for this root — nothing to do
+    if (getPdfBytes(currentRootFileId)) return;
+
+    const state = useDocumentStore.getState();
+    const resolved = resolveCompileTarget(currentRootFileId, state.files);
+    if (!resolved) return;
+
+    const { rootId, targetPath } = resolved;
+
+    const autoCompile = async () => {
+      // Try disk cache first
+      const hash = computeSourceHash(state.files);
+      const cached = await loadCachedPdf(projectRoot, targetPath, hash);
+      if (cached) {
+        setPdfData(cached, rootId);
+        return;
+      }
+      // Not cached — compile
+      setIsCompiling(true);
+      try {
+        await saveAllFiles();
+        const data = await compileLatex(projectRoot, targetPath);
+        setPdfData(data, rootId);
+        saveCacheHash(projectRoot, hash).catch(() => {});
+      } catch (error) {
+        setCompileError(formatCompileError(error), rootId);
+      } finally {
+        setIsCompiling(false);
+      }
+    };
+    autoCompile();
+  }, [currentRootFileId, initialized, projectRoot]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // PDF text selection toolbar
   const [pdfSelection, setPdfSelection] = useState<PdfTextSelection | null>(
     null,
   );
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const toolbarItemsRef = useRef<HTMLDivElement>(null);
+  const { hasOverflow: toolbarOverflow, hiddenIds } = useToolbarOverflow(toolbarItemsRef);
 
   const handleTextClick = useCallback(
     (text: string) => {
@@ -332,50 +389,7 @@ export function PdfPreview() {
     [pdfSelection, pdfContextLabel, resolvedSource, buildPdfContext],
   );
 
-  const pdfToolbarActions: ToolbarAction[] = useMemo(
-    () => [
-      {
-        id: "proofread",
-        label: "Proofread",
-        icon: <SpellCheckIcon className="size-4" />,
-      },
-      {
-        id: "navigate",
-        label: "Navigate to source",
-        icon: <FileTextIcon className="size-4" />,
-        hint: "dbl-click",
-      },
-    ],
-    [],
-  );
-
-  const handlePdfToolbarAction = useCallback(
-    (actionId: string) => {
-      if (!pdfSelection) return;
-      const label = pdfContextLabel;
-      const sel = pdfSelection;
-      setPdfSelection(null);
-      window.getSelection()?.removeAllRanges();
-      if (actionId === "proofread") {
-        useClaudeChatStore
-          .getState()
-          .sendPrompt("Proofread and fix any errors in this text", {
-            label,
-            filePath: resolvedSource?.file ?? "document.pdf",
-            selectedText: buildPdfContext(sel.text),
-          });
-      } else if (actionId === "navigate") {
-        navigateToSource();
-      }
-    },
-    [
-      pdfSelection,
-      pdfContextLabel,
-      resolvedSource,
-      navigateToSource,
-      buildPdfContext,
-    ],
-  );
+  // No separate toolbar actions — toast handles the prompt flow directly
 
   const handlePdfToolbarDismiss = useCallback(() => {
     setPdfSelection(null);
@@ -396,6 +410,7 @@ export function PdfPreview() {
     return { top: relTop, left: relLeft };
   })();
 
+  // Initial load: try disk cache first, then compile if needed
   useEffect(() => {
     if (hasInitialCompile.current) return;
     if (!initialized || !projectRoot) return;
@@ -403,28 +418,40 @@ export function PdfPreview() {
 
     hasInitialCompile.current = true;
 
-    const compile = async () => {
+    const loadOrCompile = async () => {
+      const { files: allFiles, activeFileId } = useDocumentStore.getState();
+      const resolved = resolveCompileTarget(activeFileId, allFiles);
+      if (!resolved) {
+        setCompileError(
+          "No .tex file found in this project. Create a main.tex file to compile.",
+        );
+        return;
+      }
+      const { rootId, targetPath } = resolved;
+
+      // Try loading cached PDF from disk first
+      const sourceHash = computeSourceHash(allFiles);
+      const cached = await loadCachedPdf(projectRoot, targetPath, sourceHash);
+      if (cached) {
+        setPdfData(cached, rootId);
+        return;
+      }
+
+      // No cache or content changed — compile
       setIsCompiling(true);
       try {
         await saveAllFiles();
-        const { files: allFiles, activeFileId } = useDocumentStore.getState();
-        const resolved = resolveCompileTarget(activeFileId, allFiles);
-        if (!resolved) {
-          setCompileError(
-            "No .tex file found in this project. Create a main.tex file to compile.",
-          );
-          return;
-        }
-        const { rootId, targetPath } = resolved;
         const data = await compileLatex(projectRoot, targetPath);
         setPdfData(data, rootId);
+        // Save hash so next load can use the disk cache
+        await saveCacheHash(projectRoot, sourceHash);
       } catch (error) {
         setCompileError(formatCompileError(error));
       } finally {
         setIsCompiling(false);
       }
     };
-    compile();
+    loadOrCompile();
   }, [
     initialized,
     projectRoot,
@@ -555,6 +582,10 @@ export function PdfPreview() {
       await saveAllFiles();
       const data = await compileLatex(state.projectRoot, targetFile);
       setPdfData(data, rootId);
+      // Update disk cache hash for fast reload next time
+      const latestFiles = useDocumentStore.getState().files;
+      const hash = computeSourceHash(latestFiles);
+      saveCacheHash(state.projectRoot, hash).catch(() => {});
     } catch (error) {
       setCompileError(formatCompileError(error), rootId);
     } finally {
@@ -794,8 +825,9 @@ export function PdfPreview() {
       ref={previewContainerRef}
       className="@container/pv relative flex h-full flex-col bg-muted/50"
     >
-      <div className="flex h-[calc(40px+var(--titlebar-height))] shrink-0 items-center border-border border-b bg-background px-2 pt-[var(--titlebar-height)]">
-        <div className="flex items-center gap-1">
+      <div className="flex h-[calc(36px+var(--titlebar-height))] shrink-0 items-center border-border border-b bg-background px-2 pt-[var(--titlebar-height)]">
+        {/* Left: compile status + panel controls — always visible */}
+        <div className="flex shrink-0 items-center gap-1">
           {isSaving && (
             <div className="flex items-center gap-1.5 rounded-md bg-muted/50 px-2 py-1">
               <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
@@ -835,169 +867,243 @@ export function PdfPreview() {
               Retry
             </Button>
           )}
+          <PanelMoveControls panelId="pdf" />
         </div>
-        <div data-tauri-drag-region className="flex-1 self-stretch" />
-        <div className="flex shrink-0 items-center gap-1">
+
+        {/* Middle: PDF controls — clipped when narrow */}
+        <div
+          ref={toolbarItemsRef}
+          className="flex min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden"
+        >
           {pdfData && (
             <>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7 shrink-0"
-                onClick={() => goToPage(currentPage - 1)}
-                disabled={currentPage <= 1}
-                title="Page Up"
-              >
-                <ChevronUpIcon className="size-3.5" />
-              </Button>
-              {isEditingPage ? (
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="h-6 w-8 shrink-0 rounded border border-border bg-background text-center text-foreground text-xs outline-none focus:ring-1 focus:ring-ring"
-                  value={pageInputValue}
-                  onChange={(e) => setPageInputValue(e.target.value)}
-                  onBlur={handlePageInputCommit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handlePageInputCommit();
-                    if (e.key === "Escape") {
-                      setIsEditingPage(false);
+              <div data-toolbar-item="page-nav" className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  title="Page Up"
+                >
+                  <ChevronUpIcon className="size-3.5" />
+                </Button>
+                {isEditingPage ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="h-6 w-8 shrink-0 rounded border border-border bg-background text-center text-foreground text-xs outline-none focus:ring-1 focus:ring-ring"
+                    value={pageInputValue}
+                    onChange={(e) => setPageInputValue(e.target.value)}
+                    onBlur={handlePageInputCommit}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handlePageInputCommit();
+                      if (e.key === "Escape") {
+                        setIsEditingPage(false);
+                        setPageInputValue(String(currentPage));
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    className="flex h-6 min-w-[2rem] shrink-0 items-center justify-center rounded px-1 text-muted-foreground text-xs tabular-nums hover:bg-muted"
+                    onClick={() => {
+                      setIsEditingPage(true);
                       setPageInputValue(String(currentPage));
+                    }}
+                    title="Click to jump to page"
+                  >
+                    {currentPage}
+                  </button>
+                )}
+                <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
+                  / {numPages}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage >= numPages}
+                  title="Page Down"
+                >
+                  <ChevronDownIcon className="size-3.5" />
+                </Button>
+              </div>
+              <div data-toolbar-item="zoom" className="flex shrink-0 items-center gap-1">
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={zoomOut}
+                  disabled={scale <= 0.25}
+                >
+                  <MinusIcon className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={zoomIn}
+                  disabled={scale >= 4}
+                >
+                  <PlusIcon className="size-3.5" />
+                </Button>
+                <Select
+                  value={fitMode ?? scale.toString()}
+                  onValueChange={(v) => {
+                    if (v === "fit-width" || v === "fit-height") {
+                      setFitMode(v);
+                    } else {
+                      setFitMode(null);
+                      setScale(Number(v));
                     }
                   }}
-                />
-              ) : (
-                <button
-                  className="flex h-6 min-w-[2rem] shrink-0 items-center justify-center rounded px-1 text-muted-foreground text-xs tabular-nums hover:bg-muted"
-                  onClick={() => {
-                    setIsEditingPage(true);
-                    setPageInputValue(String(currentPage));
-                  }}
-                  title="Click to jump to page"
                 >
-                  {currentPage}
-                </button>
-              )}
-              <span className="shrink-0 whitespace-nowrap text-muted-foreground text-xs">
-                / {numPages}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={() => goToPage(currentPage + 1)}
-                disabled={currentPage >= numPages}
-                title="Page Down"
-              >
-                <ChevronDownIcon className="size-3.5" />
-              </Button>
-              <div className="mx-1 h-4 w-px bg-border" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={zoomOut}
-                disabled={scale <= 0.25}
-              >
-                <MinusIcon className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={zoomIn}
-                disabled={scale >= 4}
-              >
-                <PlusIcon className="size-3.5" />
-              </Button>
-              <Select
-                value={fitMode ?? scale.toString()}
-                onValueChange={(v) => {
-                  if (v === "fit-width" || v === "fit-height") {
-                    setFitMode(v);
-                  } else {
-                    setFitMode(null);
-                    setScale(Number(v));
-                  }
-                }}
-              >
-                <SelectTrigger size="sm" className="h-7! w-auto text-xs">
-                  <SelectValue>
-                    {fitMode === "fit-width"
-                      ? "Fit width"
-                      : fitMode === "fit-height"
-                        ? "Fit height"
-                        : `${Math.round(scale * 100)}%`}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent position="popper" align="end">
-                  <SelectItem value="fit-width">Fit to width</SelectItem>
-                  <SelectItem value="fit-height">Fit to height</SelectItem>
-                  <SelectSeparator />
-                  {ZOOM_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="mx-1 h-4 w-px bg-border" />
-              {/* Capture mode */}
-              <Button
-                variant={captureMode ? "default" : "secondary"}
-                size="sm"
-                className={`h-7 gap-1.5 px-2 text-xs ${
-                  captureMode
-                    ? "ring-2 ring-primary/30"
-                    : "bg-foreground text-background hover:bg-foreground/90"
-                }`}
-                onClick={() => setCaptureMode(!captureMode)}
-                title={`Capture & Ask (${navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"})`}
-              >
-                <CrosshairIcon className="size-3.5 shrink-0" />
-                <span className="@[36rem]/pv:inline hidden">Capture & Ask</span>
-                <kbd className="pointer-events-none ml-0.5 @[36rem]/pv:inline hidden rounded border border-background/30 bg-background/20 px-1 py-0.5 font-medium text-[10px] text-background leading-none">
-                  {navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"}
-                </kbd>
-              </Button>
-              <div className="mx-1 h-4 w-px bg-border" />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                onClick={handleExport}
-                title="Export PDF"
-              >
-                <DownloadIcon className="size-3.5" />
-              </Button>
+                  <SelectTrigger size="sm" className="h-7! w-auto shrink-0 text-xs">
+                    <SelectValue>
+                      {fitMode === "fit-width"
+                        ? "Fit width"
+                        : fitMode === "fit-height"
+                          ? "Fit height"
+                          : `${Math.round(scale * 100)}%`}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent position="popper" align="end">
+                    <SelectItem value="fit-width">Fit to width</SelectItem>
+                    <SelectItem value="fit-height">Fit to height</SelectItem>
+                    <SelectSeparator />
+                    {ZOOM_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div data-toolbar-item="capture" className="flex shrink-0 items-center">
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                <Button
+                  variant={captureMode ? "default" : "secondary"}
+                  size="sm"
+                  className={`h-7 shrink-0 gap-1.5 px-2 text-xs ${
+                    captureMode
+                      ? "ring-2 ring-primary/30"
+                      : "bg-foreground text-background hover:bg-foreground/90"
+                  }`}
+                  onClick={() => setCaptureMode(!captureMode)}
+                  title={`Capture & Ask (${navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"})`}
+                >
+                  <CrosshairIcon className="size-3.5 shrink-0" />
+                  <span className="@[36rem]/pv:inline hidden">Capture & Ask</span>
+                  <kbd className="pointer-events-none ml-0.5 @[36rem]/pv:inline hidden rounded border border-background/30 bg-background/20 px-1 py-0.5 font-medium text-[10px] text-background leading-none">
+                    {navigator.userAgent.includes("Mac") ? "⌘X" : "Ctrl+X"}
+                  </kbd>
+                </Button>
+              </div>
+              <div data-toolbar-item="export" className="flex shrink-0 items-center">
+                <div className="mx-1 h-4 w-px shrink-0 bg-border" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  onClick={handleExport}
+                  title="Export PDF"
+                >
+                  <DownloadIcon className="size-3.5" />
+                </Button>
+              </div>
             </>
           )}
-          <Popover>
-            <PopoverTrigger asChild>
+          <div data-toolbar-item="history" className="shrink-0">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7 shrink-0"
+                  title="History"
+                >
+                  <HistoryIcon className="size-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-96">
+                <HistoryPanel maxHeight="max-h-[32rem]" />
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+
+        {/* Right: overflow menu — only shows items that are actually clipped */}
+        {toolbarOverflow && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-7"
-                title="History"
+                className="ml-1 size-7 shrink-0"
+                title="More actions"
               >
-                <HistoryIcon className="size-3.5" />
+                <MoreHorizontalIcon className="size-3.5" />
               </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-96">
-              <HistoryPanel maxHeight="max-h-[32rem]" />
-            </PopoverContent>
-          </Popover>
-        </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {hiddenIds.has("page-nav") && (
+                <>
+                  <DropdownMenuItem onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1}>
+                    <ChevronUpIcon className="mr-2 size-3.5" />
+                    Previous page ({currentPage}/{numPages})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= numPages}>
+                    <ChevronDownIcon className="mr-2 size-3.5" />
+                    Next page
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {hiddenIds.has("zoom") && (
+                <>
+                  <DropdownMenuItem onClick={zoomOut} disabled={scale <= 0.25}>
+                    <MinusIcon className="mr-2 size-3.5" />
+                    Zoom out
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={zoomIn} disabled={scale >= 4}>
+                    <PlusIcon className="mr-2 size-3.5" />
+                    Zoom in
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              {hiddenIds.has("capture") && (
+                <DropdownMenuItem onClick={() => setCaptureMode(!captureMode)}>
+                  <CrosshairIcon className="mr-2 size-3.5" />
+                  {captureMode ? "Cancel capture" : "Capture & Ask"}
+                </DropdownMenuItem>
+              )}
+              {hiddenIds.has("export") && (
+                <DropdownMenuItem onClick={handleExport}>
+                  <DownloadIcon className="mr-2 size-3.5" />
+                  Export PDF
+                </DropdownMenuItem>
+              )}
+              {hiddenIds.has("history") && (
+                <DropdownMenuItem onClick={() => {/* History opens as popover, not menu item */}}>
+                  <HistoryIcon className="mr-2 size-3.5" />
+                  History
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       {renderContent()}
-      {/* PDF selection toolbar */}
+      {/* PDF selection toast */}
       {pdfToolbarPosition && pdfSelection && (
-        <SelectionToolbar
+        <SelectionToast
           position={pdfToolbarPosition}
-          contextLabel={pdfContextLabel}
-          actions={pdfToolbarActions}
+          selectedText={pdfSelection.text}
           onSendPrompt={handlePdfToolbarSendPrompt}
-          onAction={handlePdfToolbarAction}
           onDismiss={handlePdfToolbarDismiss}
         />
       )}

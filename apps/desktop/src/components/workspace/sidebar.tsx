@@ -19,13 +19,16 @@ import {
   GithubIcon,
   ChevronRightIcon,
   ChevronDownIcon,
+  ChevronUpIcon,
   FileCodeIcon,
   FileIcon,
   FileSpreadsheetIcon,
   AppWindowIcon,
   FlaskConicalIcon,
   TerminalIcon,
+  PanelLeftCloseIcon,
 } from "lucide-react";
+import { useScrollOverflow } from "@/hooks/use-scroll-overflow";
 import { invoke } from "@tauri-apps/api/core";
 import {
   DndContext,
@@ -38,12 +41,22 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Panel,
+  PanelGroup,
+  PanelResizeHandle,
+  type ImperativePanelHandle,
+} from "react-resizable-panels";
 import { useTheme } from "next-themes";
 import { useDocumentStore, type ProjectFile } from "@/stores/document-store";
 import { useHistoryStore } from "@/stores/history-store";
 import { cn } from "@/lib/utils";
-import { ZoteroPanel, ZoteroHeader } from "@/components/workspace/zotero-panel";
+import { useUIStore } from "@/stores/ui-store";
+import {
+  ZoteroPanel,
+  ZoteroHeader,
+  ZoteroHeaderActions,
+} from "@/components/workspace/zotero-panel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -221,6 +234,11 @@ export function Sidebar() {
     const active = s.files.find((f) => f.id === s.activeFileId);
     return active?.content ?? "";
   });
+  // Detect if this is a LaTeX project (has any .tex files)
+  const isLatexProject = useMemo(
+    () => files.some((f) => f.type === "tex"),
+    [files],
+  );
   const requestJumpToPosition = useDocumentStore(
     (s) => s.requestJumpToPosition,
   );
@@ -515,11 +533,13 @@ export function Sidebar() {
     // Auto-append .tex if no extension provided
     const finalName = /\.\w+$/.test(name) ? name : `${name}.tex`;
     const lower = finalName.toLowerCase();
-    const type: "tex" | "image" = /\.(png|jpg|jpeg|gif|svg|bmp|webp)$/.test(
+    const type: "tex" | "image" | "md" = /\.(png|jpg|jpeg|gif|svg|bmp|webp)$/.test(
       lower,
     )
       ? "image"
-      : "tex";
+      : /\.(md|markdown)$/.test(lower)
+        ? "md"
+        : "tex";
     createNewFile(finalName, type, addDialogFolder);
     setNewFileName("");
     setNameError("");
@@ -616,19 +636,43 @@ export function Sidebar() {
     setFolderDialogOpen(true);
   };
 
+  // ─── Resizable sidebar panel refs (for imperative collapse/expand) ───
+  const filesPanelRef = useRef<ImperativePanelHandle>(null);
+  const outlinePanelRef = useRef<ImperativePanelHandle>(null);
+  const zoteroPanelRef = useRef<ImperativePanelHandle>(null);
+  const envPanelRef = useRef<ImperativePanelHandle>(null);
+  // Track collapsed state so chevron icons update
+  const [filesCollapsed, setFilesCollapsed] = useState(false);
+  const [outlineCollapsed, setOutlineCollapsed] = useState(false);
+  const [zoteroCollapsed, setZoteroCollapsed] = useState(false);
+  const [envCollapsed, setEnvCollapsed] = useState(true); // Environment starts collapsed
+  // Compute collapsedSize as % so panel shows only the 32px header
+  const panelGroupRef = useRef<HTMLDivElement>(null);
+  const [headerPct, setHeaderPct] = useState(5); // fallback
+  useEffect(() => {
+    const el = panelGroupRef.current;
+    if (!el) return;
+    const obs = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      if (h > 0) setHeaderPct((32 / h) * 100);
+    });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   // ─── Render ───
 
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       {/* Header — padded top for macOS overlay titlebar */}
-      <div className="relative flex h-[calc(48px+var(--titlebar-height))] items-center justify-center border-sidebar-border border-b px-3 pt-[var(--titlebar-height)]">
-        <div className="flex flex-col items-center">
-          <span className="font-semibold text-sm">ClaudePrism</span>
-          <span className="text-muted-foreground text-xs">
+      <div className="flex h-[calc(36px+var(--titlebar-height))] items-center overflow-hidden border-sidebar-border border-b px-3 pt-[var(--titlebar-height)]">
+        <div className="flex min-w-0 flex-1 flex-col items-center overflow-hidden">
+          <span className="truncate font-semibold text-sm">ClaudePrism</span>
+          <span className="truncate text-muted-foreground text-xs">
             {projectRoot?.split(/[/\\]/).pop() || "Desktop"}
           </span>
         </div>
-        <div className="absolute right-3 flex items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
@@ -638,177 +682,255 @@ export function Sidebar() {
           >
             <HomeIcon className="size-3.5" />
           </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            onClick={() => useUIStore.getState().toggleSidebar()}
+            title="Hide Sidebar"
+          >
+            <PanelLeftCloseIcon className="size-3.5" />
+          </Button>
         </div>
       </div>
 
-      {/* Resizable sections */}
-      <PanelGroup direction="vertical" className="min-h-0 flex-1">
-        {/* Files */}
-        <Panel defaultSize={50} minSize={15}>
-          <div
-            ref={sidebarFilesRef}
-            className="flex h-full flex-col"
-            data-sidebar-files
+      {/* Resizable & collapsible sidebar sections */}
+      <div ref={panelGroupRef} className="min-h-0 flex-1">
+        <PanelGroup direction="vertical" autoSaveId={isLatexProject ? "sidebar-sections-latex" : "sidebar-sections-md"}>
+          {/* Files */}
+          <Panel
+            ref={filesPanelRef}
+            defaultSize={35}
+            minSize={10}
+            collapsible
+            collapsedSize={headerPct}
+            onCollapse={() => setFilesCollapsed(true)}
+            onExpand={() => setFilesCollapsed(false)}
           >
-            <div className="relative flex h-8 shrink-0 items-center justify-center border-sidebar-border border-b px-3">
-              <div className="flex items-center gap-2">
-                <FolderIcon className="size-3.5 text-muted-foreground" />
-                <span className="font-medium text-xs">Files</span>
-              </div>
-              <div className="absolute right-3 flex items-center gap-0.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5"
-                  title="Refresh"
-                  onClick={() => refreshFiles()}
-                >
-                  <RefreshCwIcon className="size-3" />
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-5"
-                      title="Add"
-                    >
-                      <PlusIcon className="size-3" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openNewFileDialog()}>
-                      <FileTextIcon className="mr-2 size-4" />
-                      New LaTeX File
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openNewFolderDialog()}>
-                      <FolderPlusIcon className="mr-2 size-4" />
-                      New Folder
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleImport()}>
-                      <UploadIcon className="mr-2 size-4" />
-                      Import File
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <ContextMenu>
-                <ContextMenuTrigger asChild>
-                  <DroppableRoot nativeDragOver={nativeDragOver === "__root__"}>
-                    {tree.map((node) => (
-                      <FileTreeNode
-                        key={node.relativePath}
-                        node={node}
-                        depth={0}
-                        activeFileId={activeFileId}
-                        expandedFolders={expandedFolders}
-                        onToggleFolder={toggleFolder}
-                        onSelectFile={(id: string) => {
-                          const parent = id.includes("/")
-                            ? id.substring(0, id.lastIndexOf("/"))
-                            : undefined;
-                          setPasteTargetFolder(parent);
-                          setActiveFile(id);
-                        }}
-                        onNewFile={openNewFileDialog}
-                        onNewFolder={openNewFolderDialog}
-                        onImport={handleImport}
-                        onRename={openRenameDialog}
-                        onDelete={deleteFile}
-                        onDeleteFolder={deleteFolder}
-                        fileCount={files.length}
-                        nativeDragOver={nativeDragOver}
-                      />
-                    ))}
-                  </DroppableRoot>
-                </ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem onClick={() => openNewFileDialog()}>
-                    <FileTextIcon className="mr-2 size-4" />
-                    New File
-                  </ContextMenuItem>
-                  <ContextMenuItem onClick={() => openNewFolderDialog()}>
-                    <FolderPlusIcon className="mr-2 size-4" />
-                    New Folder
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => handleImport()}>
-                    <UploadIcon className="mr-2 size-4" />
-                    Import File
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-              <DragOverlay dropAnimation={null}>
-                {activeDrag && (
-                  <div className="flex items-center gap-2 rounded-md bg-sidebar px-2 py-1 text-sm shadow-lg ring-1 ring-ring">
-                    {activeDrag.type === "folder" ? (
-                      <FolderIcon className="size-4 shrink-0" />
-                    ) : (
-                      <FileTextIcon className="size-4 shrink-0" />
-                    )}
-                    <span className="truncate">{activeDrag.name}</span>
-                  </div>
-                )}
-              </DragOverlay>
-            </DndContext>
-          </div>
-        </Panel>
-
-        <PanelResizeHandle className="h-px bg-sidebar-border transition-colors hover:bg-ring data-resize-handle-active:bg-ring" />
-
-        {/* Outline */}
-        <Panel defaultSize={20} minSize={10}>
-          <div className="flex h-full flex-col">
-            <div className="flex h-8 shrink-0 items-center justify-center gap-2 px-3">
-              <ListIcon className="size-3.5 text-muted-foreground" />
-              <span className="font-medium text-xs">Outline</span>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-1">
-              {toc.length > 0 ? (
-                toc.map((item, index) => (
-                  <button
-                    key={index}
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
-                    style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
-                    onClick={() => handleTocClick(item.line)}
+            <SidebarSection
+              icon={FolderIcon}
+              title="Files"
+              isOpen={!filesCollapsed}
+              onToggle={() => {
+                if (filesCollapsed) filesPanelRef.current?.expand();
+                else filesPanelRef.current?.collapse();
+              }}
+              actions={
+                <div className="flex items-center gap-0.5">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5"
+                    title="Refresh"
+                    onClick={(e) => { e.stopPropagation(); refreshFiles(); }}
                   >
-                    <HashIcon className="size-3 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{item.title}</span>
-                  </button>
-                ))
-              ) : (
-                <div className="px-2 py-1 text-muted-foreground text-xs">
-                  No sections found
+                    <RefreshCwIcon className="size-3" />
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-5"
+                        title="Add"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <PlusIcon className="size-3" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openNewFileDialog()}>
+                        <FileTextIcon className="mr-2 size-4" />
+                        New File
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openNewFolderDialog()}>
+                        <FolderPlusIcon className="mr-2 size-4" />
+                        New Folder
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleImport()}>
+                        <UploadIcon className="mr-2 size-4" />
+                        Import File
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              )}
-            </div>
-          </div>
-        </Panel>
+              }
+            >
+              <div
+                ref={sidebarFilesRef}
+                className="flex flex-col"
+                data-sidebar-files
+              >
+                <DndContext
+                  sensors={sensors}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <DroppableRoot nativeDragOver={nativeDragOver === "__root__"}>
+                        {tree.map((node) => (
+                          <FileTreeNode
+                            key={node.relativePath}
+                            node={node}
+                            depth={0}
+                            activeFileId={activeFileId}
+                            expandedFolders={expandedFolders}
+                            onToggleFolder={toggleFolder}
+                            onSelectFile={(id: string) => {
+                              const parent = id.includes("/")
+                                ? id.substring(0, id.lastIndexOf("/"))
+                                : undefined;
+                              setPasteTargetFolder(parent);
+                              setActiveFile(id);
+                            }}
+                            onNewFile={openNewFileDialog}
+                            onNewFolder={openNewFolderDialog}
+                            onImport={handleImport}
+                            onRename={openRenameDialog}
+                            onDelete={deleteFile}
+                            onDeleteFolder={deleteFolder}
+                            fileCount={files.length}
+                            nativeDragOver={nativeDragOver}
+                          />
+                        ))}
+                      </DroppableRoot>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => openNewFileDialog()}>
+                        <FileTextIcon className="mr-2 size-4" />
+                        New File
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => openNewFolderDialog()}>
+                        <FolderPlusIcon className="mr-2 size-4" />
+                        New Folder
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onClick={() => handleImport()}>
+                        <UploadIcon className="mr-2 size-4" />
+                        Import File
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  <DragOverlay dropAnimation={null}>
+                    {activeDrag && (
+                      <div className="flex items-center gap-2 rounded-md bg-sidebar px-2 py-1 text-sm shadow-lg ring-1 ring-ring">
+                        {activeDrag.type === "folder" ? (
+                          <FolderIcon className="size-4 shrink-0" />
+                        ) : (
+                          <FileTextIcon className="size-4 shrink-0" />
+                        )}
+                        <span className="truncate">{activeDrag.name}</span>
+                      </div>
+                    )}
+                  </DragOverlay>
+                </DndContext>
+              </div>
+            </SidebarSection>
+          </Panel>
 
-        <PanelResizeHandle className="h-px bg-sidebar-border transition-colors hover:bg-ring data-resize-handle-active:bg-ring" />
+          {isLatexProject && (
+            <>
+              <PanelResizeHandle className="h-px bg-border transition-colors hover:bg-ring data-[resize-handle-active]:bg-ring" />
 
-        {/* Zotero */}
-        <Panel defaultSize={15} minSize={10}>
-          <div className="flex h-full flex-col">
-            <div className="flex h-8 shrink-0 items-center">
-              <ZoteroHeader />
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <ZoteroPanel />
-            </div>
-          </div>
-        </Panel>
-      </PanelGroup>
+              {/* Outline — LaTeX projects only */}
+              <Panel
+                ref={outlinePanelRef}
+                defaultSize={20}
+                minSize={10}
+                collapsible
+                collapsedSize={headerPct}
+                onCollapse={() => setOutlineCollapsed(true)}
+                onExpand={() => setOutlineCollapsed(false)}
+              >
+                <SidebarSection
+                  icon={ListIcon}
+                  title="Outline"
+                  isOpen={!outlineCollapsed}
+                  onToggle={() => {
+                    if (outlineCollapsed) outlinePanelRef.current?.expand();
+                    else outlinePanelRef.current?.collapse();
+                  }}
+                >
+                  <div className="p-1">
+                    {toc.length > 0 ? (
+                      toc.map((item, index) => (
+                        <button
+                          key={index}
+                          data-sidebar-item
+                          className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
+                          style={{ paddingLeft: `${(item.level - 1) * 12 + 8}px` }}
+                          onClick={() => handleTocClick(item.line)}
+                        >
+                          <HashIcon className="size-3 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{item.title}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-2 py-1 text-muted-foreground text-xs">
+                        No sections found
+                      </div>
+                    )}
+                  </div>
+                </SidebarSection>
+              </Panel>
 
-      {/* Environment section — Python + Skills */}
-      <EnvironmentSection projectPath={projectRoot} />
+              <PanelResizeHandle className="h-px bg-border transition-colors hover:bg-ring data-[resize-handle-active]:bg-ring" />
+
+              {/* Zotero — LaTeX projects only */}
+              <Panel
+                ref={zoteroPanelRef}
+                defaultSize={30}
+                minSize={10}
+                collapsible
+                collapsedSize={headerPct}
+                onCollapse={() => setZoteroCollapsed(true)}
+                onExpand={() => setZoteroCollapsed(false)}
+              >
+                <SidebarSection
+                  headerSlot={<ZoteroHeader />}
+                  actions={<ZoteroHeaderActions />}
+                  isOpen={!zoteroCollapsed}
+                  onToggle={() => {
+                    if (zoteroCollapsed) zoteroPanelRef.current?.expand();
+                    else zoteroPanelRef.current?.collapse();
+                  }}
+                >
+                  <div className="overflow-hidden">
+                    <ZoteroPanel />
+                  </div>
+                </SidebarSection>
+              </Panel>
+            </>
+          )}
+
+          <PanelResizeHandle className="h-px bg-border transition-colors hover:bg-ring data-[resize-handle-active]:bg-ring" />
+
+          {/* Environment */}
+          <Panel
+            ref={envPanelRef}
+            defaultSize={15}
+            minSize={10}
+            collapsible
+            collapsedSize={headerPct}
+            onCollapse={() => setEnvCollapsed(true)}
+            onExpand={() => setEnvCollapsed(false)}
+          >
+            <SidebarSection
+              icon={AppWindowIcon}
+              title="Environment"
+              isOpen={!envCollapsed}
+              onToggle={() => {
+                if (envCollapsed) envPanelRef.current?.expand();
+                else envPanelRef.current?.collapse();
+              }}
+            >
+              <EnvironmentSectionContent projectPath={projectRoot} />
+            </SidebarSection>
+          </Panel>
+        </PanelGroup>
+      </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-sidebar-border border-t px-3 py-2 text-muted-foreground text-xs">
@@ -984,7 +1106,7 @@ function DroppableRoot({
       ref={setNodeRef}
       data-drop-folder="__root__"
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto p-1",
+        "min-h-0 flex-1 p-1",
         (isOver || nativeDragOver) && "bg-accent/30",
       )}
     >
@@ -1184,7 +1306,139 @@ interface SkillsStatus {
   location: string;
 }
 
-function EnvironmentSection({ projectPath }: { projectPath: string | null }) {
+// ─── Collapsible sidebar section ───
+
+function OverflowIndicator({
+  direction,
+  visible,
+  count,
+  onClick,
+}: {
+  direction: "up" | "down";
+  visible: boolean;
+  count: number;
+  onClick: () => void;
+}) {
+  const isUp = direction === "up";
+  return (
+    <div
+      className={cn(
+        "pointer-events-none absolute right-0 left-0 z-10 flex items-center justify-center transition-opacity duration-150",
+        isUp ? "top-0" : "bottom-0",
+        isUp
+          ? "bg-gradient-to-b from-sidebar to-transparent"
+          : "bg-gradient-to-t from-sidebar to-transparent",
+        "h-6",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+    >
+      <button
+        type="button"
+        className={cn(
+          "pointer-events-auto flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
+          !visible && "pointer-events-none",
+        )}
+        onClick={onClick}
+        tabIndex={visible ? 0 : -1}
+      >
+        {isUp ? (
+          <ChevronUpIcon className="size-3" />
+        ) : (
+          <ChevronDownIcon className="size-3" />
+        )}
+        {count > 0 && (
+          <span className="font-medium text-[10px] leading-none">
+            +{count}
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function SidebarSection({
+  icon: Icon,
+  title,
+  headerSlot,
+  actions,
+  isOpen = true,
+  onToggle,
+  children,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  title?: string;
+  headerSlot?: React.ReactNode;
+  actions?: React.ReactNode;
+  /** Controlled open state — driven by the parent Panel's collapse/expand. */
+  isOpen?: boolean;
+  /** Called when the header is clicked to toggle. */
+  onToggle?: () => void;
+  children: React.ReactNode;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const { canScrollUp, canScrollDown, hiddenAbove, hiddenBelow, scrollUp, scrollDown } =
+    useScrollOverflow(contentRef);
+
+  return (
+    <div className="flex h-full flex-col border-sidebar-border border-t overflow-hidden">
+      <button
+        type="button"
+        className="relative flex h-8 w-full shrink-0 items-center gap-2 px-3 transition-colors hover:bg-sidebar-accent/30"
+        onClick={() => onToggle?.()}
+      >
+        <ChevronRightIcon
+          className={cn(
+            "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+            isOpen && "rotate-90",
+          )}
+        />
+        {headerSlot ? (
+          <div className="flex min-w-0 flex-1 items-center">{headerSlot}</div>
+        ) : (
+          <div className="flex items-center gap-2">
+            {Icon && <Icon className="size-3.5 text-muted-foreground" />}
+            <span className="font-medium text-xs">{title}</span>
+          </div>
+        )}
+        {actions && (
+          <div
+            className="absolute right-3 flex items-center gap-0.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions}
+          </div>
+        )}
+      </button>
+      {isOpen && (
+        <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div ref={contentRef} className="absolute inset-0 overflow-y-auto">
+            {children}
+          </div>
+          <OverflowIndicator
+            direction="up"
+            visible={canScrollUp}
+            count={hiddenAbove}
+            onClick={scrollUp}
+          />
+          <OverflowIndicator
+            direction="down"
+            visible={canScrollDown}
+            count={hiddenBelow}
+            onClick={scrollDown}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Environment section content ───
+
+function EnvironmentSectionContent({
+  projectPath,
+}: {
+  projectPath: string | null;
+}) {
   // ── Python / uv ──
   const venvReady = useUvSetupStore((s) => s.venvReady);
   const uvStatus = useUvSetupStore((s) => s.status);
@@ -1255,59 +1509,55 @@ function EnvironmentSection({ projectPath }: { projectPath: string | null }) {
 
   return (
     <>
-      <div className="border-sidebar-border border-t">
-        <div className="flex h-8 shrink-0 items-center justify-center gap-2 px-3">
-          <AppWindowIcon className="size-3.5 text-muted-foreground" />
-          <span className="font-medium text-xs">Environment</span>
-        </div>
-        <div className="space-y-0.5 px-1 pb-1.5">
-          {/* Python / uv row */}
-          <button
-            className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
-            onClick={() => setShowUvDialog(true)}
+      <div className="space-y-0.5 px-1 pb-1.5">
+        {/* Python / uv row */}
+        <button
+          data-sidebar-item
+          className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
+          onClick={() => setShowUvDialog(true)}
+        >
+          <TerminalIcon
+            className={cn(
+              "size-3.5 shrink-0",
+              venvReady ? "text-foreground" : "text-muted-foreground",
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-xs">Python</span>
+          <span
+            className={cn(
+              "shrink-0 text-xs",
+              venvReady ? "text-foreground" : "text-muted-foreground",
+            )}
           >
-            <TerminalIcon
-              className={cn(
-                "size-3.5 shrink-0",
-                venvReady ? "text-foreground" : "text-muted-foreground",
-              )}
-            />
-            <span className="min-w-0 flex-1 truncate text-xs">Python</span>
-            <span
-              className={cn(
-                "shrink-0 text-xs",
-                venvReady ? "text-foreground" : "text-muted-foreground",
-              )}
-            >
-              {pythonLabel}
-            </span>
-          </button>
-          {/* Scientific Skills row */}
-          <button
-            className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
-            onClick={() => setShowOnboarding(true)}
+            {pythonLabel}
+          </span>
+        </button>
+        {/* Scientific Skills row */}
+        <button
+          data-sidebar-item
+          className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-sidebar-accent/50"
+          onClick={() => setShowOnboarding(true)}
+        >
+          <FlaskConicalIcon
+            className={cn(
+              "size-3.5 shrink-0",
+              skillsStatus?.installed
+                ? "text-foreground"
+                : "text-muted-foreground",
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-xs">Skills</span>
+          <span
+            className={cn(
+              "shrink-0 text-xs",
+              skillsStatus?.installed
+                ? "text-foreground"
+                : "text-muted-foreground",
+            )}
           >
-            <FlaskConicalIcon
-              className={cn(
-                "size-3.5 shrink-0",
-                skillsStatus?.installed
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            />
-            <span className="min-w-0 flex-1 truncate text-xs">Skills</span>
-            <span
-              className={cn(
-                "shrink-0 text-xs",
-                skillsStatus?.installed
-                  ? "text-foreground"
-                  : "text-muted-foreground",
-              )}
-            >
-              {skillsLabel}
-            </span>
-          </button>
-        </div>
+            {skillsLabel}
+          </span>
+        </button>
       </div>
 
       <UvSetupDialog
@@ -1362,6 +1612,7 @@ function DraggableItem({
       ref={setNodeRef}
       {...wrappedListeners}
       {...attributes}
+      data-sidebar-item
       style={{ opacity: isDragging ? 0.4 : 1 }}
     >
       {children}

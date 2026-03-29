@@ -35,6 +35,7 @@ import {
   rejectChunk,
 } from "@codemirror/merge";
 import { latex, latexLinter } from "codemirror-lang-latex";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { bibtex } from "./lang-bibtex";
 import {
   linter,
@@ -55,7 +56,7 @@ import {
   formatCompileError,
 } from "@/lib/latex-compiler";
 import { EditorToolbar } from "./editor-toolbar";
-import { SelectionToolbar, type ToolbarAction } from "./selection-toolbar";
+import { SelectionToast } from "./selection-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -66,13 +67,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  SpellCheckIcon,
   RotateCcwIcon,
   TagIcon,
   CopyIcon,
   XIcon,
 } from "lucide-react";
 import { ClaudeChatDrawer } from "@/components/claude-chat/claude-chat-drawer";
+import { useUIStore } from "@/stores/ui-store";
 import { ProposedChangesPanel } from "@/components/claude-chat/proposed-changes-panel";
 import { ImagePreview } from "./image-preview";
 import { SearchPanel } from "./search-panel";
@@ -104,6 +105,8 @@ export function LatexEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
 
+  const chatViewMode = useUIStore((s) => s.chatViewMode);
+
   const files = useDocumentStore((s) => s.files);
   const activeFileId = useDocumentStore((s) => s.activeFileId);
   const projectRoot = useDocumentStore((s) => s.projectRoot);
@@ -123,6 +126,7 @@ export function LatexEditor() {
     activeFile?.type === "tex" ||
     activeFile?.type === "bib" ||
     activeFile?.type === "style" ||
+    activeFile?.type === "md" ||
     activeFile?.type === "other";
   const activeFileContent = activeFile?.content;
   const isLargeFileNotLoaded =
@@ -163,6 +167,7 @@ export function LatexEditor() {
   const { resolvedTheme } = useTheme();
 
   const compileRef = useRef<() => void>(() => {});
+  const liveCompileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSearchOpenRef = useRef(false);
   const themeCompartmentRef = useRef(new Compartment());
   const mergeCompartmentRef = useRef(new Compartment());
@@ -471,7 +476,19 @@ export function LatexEditor() {
         }
         return;
       }
-      if (update.docChanged) setContent(update.state.doc.toString());
+      if (update.docChanged) {
+        setContent(update.state.doc.toString());
+        // Live compile: debounce 1.5s after last keystroke (LaTeX only)
+        if (activeFile?.type === "tex" || activeFile?.type === "bib" || activeFile?.type === "style") {
+          if (liveCompileTimerRef.current) {
+            clearTimeout(liveCompileTimerRef.current);
+          }
+          liveCompileTimerRef.current = setTimeout(() => {
+            liveCompileTimerRef.current = null;
+            compileRef.current?.();
+          }, 1500);
+        }
+      }
       if (update.selectionSet) {
         const { from, to, head } = update.state.selection.main;
         setCursorPosition(head);
@@ -538,6 +555,20 @@ export function LatexEditor() {
       return true;
     };
 
+    // Wrap selected text with markdown markers (e.g. ** for bold, * for italic)
+    const wrapSelectionMd = (view: EditorView, wrapper: string): boolean => {
+      const { from, to } = view.state.selection.main;
+      const selected = view.state.sliceDoc(from, to);
+      view.dispatch({
+        changes: { from, to, insert: wrapper + selected + wrapper },
+        selection: {
+          anchor: from + wrapper.length,
+          head: from + wrapper.length + selected.length,
+        },
+      });
+      return true;
+    };
+
     const compileKeymap = Prec.highest(
       keymap.of([
         {
@@ -597,11 +628,17 @@ export function LatexEditor() {
         },
         {
           key: "Mod-b",
-          run: (view) => wrapSelection(view, "textbf"),
+          run: (view) =>
+            activeFile?.type === "md"
+              ? wrapSelectionMd(view, "**")
+              : wrapSelection(view, "textbf"),
         },
         {
           key: "Mod-i",
-          run: (view) => wrapSelection(view, "textit"),
+          run: (view) =>
+            activeFile?.type === "md"
+              ? wrapSelectionMd(view, "*")
+              : wrapSelection(view, "textit"),
         },
         {
           key: "Mod-/",
@@ -623,7 +660,11 @@ export function LatexEditor() {
           ...defaultKeymap,
           ...historyKeymap,
         ]),
-        activeFile?.type === "bib" ? bibtex() : latex({ enableLinting: false }),
+        activeFile?.type === "bib"
+          ? bibtex()
+          : activeFile?.type === "md"
+            ? markdown({ base: markdownLanguage })
+            : latex({ enableLinting: false }),
         ...(activeFile?.type === "tex"
           ? [
               linter((view) => {
@@ -789,6 +830,11 @@ export function LatexEditor() {
     }
 
     return () => {
+      // Clear live-compile debounce timer
+      if (liveCompileTimerRef.current) {
+        clearTimeout(liveCompileTimerRef.current);
+        liveCompileTimerRef.current = null;
+      }
       // Save per-file cursor + scroll before destroying
       editorStateCache.set(activeFileId, {
         cursor: view.state.selection.main.head,
@@ -971,30 +1017,16 @@ export function LatexEditor() {
     [setSelectionRange],
   );
 
-  const editorToolbarActions: ToolbarAction[] = useMemo(
-    () => [
-      {
-        id: "proofread",
-        label: "Proofread",
-        icon: <SpellCheckIcon className="size-4" />,
-      },
-    ],
-    [],
-  );
-
-  const handleToolbarAction = useCallback(
-    (actionId: string) => {
-      toolbarStickyRef.current = false;
-      setSelectionCoords(null);
-      setSelectionRange(null);
-      if (actionId === "proofread") {
-        useClaudeChatStore
-          .getState()
-          .sendPrompt("Proofread and fix any errors in this text");
-      }
-    },
-    [setSelectionRange],
-  );
+  // Get the selected text for the toast
+  const selectedText = useMemo(() => {
+    const view = viewRef.current;
+    if (!selectionRange || !view) return "";
+    try {
+      return view.state.sliceDoc(selectionRange.start, selectionRange.end);
+    } catch {
+      return "";
+    }
+  }, [selectionRange]);
 
   const handleToolbarDismiss = useCallback(() => {
     toolbarStickyRef.current = false;
@@ -1043,7 +1075,7 @@ export function LatexEditor() {
       {/* Toolbar — adapts to file type */}
       <EditorToolbar
         editorView={viewRef}
-        fileType={isPdf || isImage ? "image" : undefined}
+        fileType={isPdf || isImage ? "image" : activeFile?.type === "md" ? "md" : undefined}
         imageScale={isPdf || isImage ? imageScale : undefined}
         onImageScaleChange={isPdf || isImage ? setImageScale : undefined}
         cropMode={isImage ? cropMode : undefined}
@@ -1178,15 +1210,13 @@ export function LatexEditor() {
               <HistoryDiffView diffs={historyDiffResult} />
             )}
             {toolbarPosition &&
-              selectionLabel &&
+              selectedText &&
               !isMergeActiveRef.current &&
               !isSearchOpen && (
-                <SelectionToolbar
+                <SelectionToast
                   position={toolbarPosition}
-                  contextLabel={selectionLabel}
-                  actions={editorToolbarActions}
+                  selectedText={selectedText}
                   onSendPrompt={handleToolbarSendPrompt}
-                  onAction={handleToolbarAction}
                   onDismiss={handleToolbarDismiss}
                 />
               )}
@@ -1290,8 +1320,8 @@ export function LatexEditor() {
             )}
           </>
         )}
-        {/* Chat drawer — single stable instance across all file types */}
-        <ClaudeChatDrawer />
+        {/* Chat drawer — single stable instance across all file types (hidden in split mode) */}
+        {chatViewMode !== "split" && <ClaudeChatDrawer />}
       </div>
       {/* Text-editor-only bottom panels */}
       {!isPdf &&

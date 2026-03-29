@@ -19,7 +19,7 @@ import { useHistoryStore } from "@/stores/history-store";
 import { useClaudeChatStore } from "@/stores/claude-chat-store";
 import { clearDocCache } from "@/lib/mupdf/pdf-doc-cache";
 import { clearScrollPositionCache } from "@/components/workspace/preview/pdf-viewer";
-import { clearZoomCache } from "@/components/workspace/preview/pdf-preview";
+import { clearZoomCache } from "@/components/workspace/preview/pdf-zoom-cache";
 import { clearEditorStateCache } from "@/components/workspace/editor/latex-editor";
 import { createLogger } from "@/lib/debug/logger";
 
@@ -118,7 +118,7 @@ interface DocumentState {
   saveCurrentFile: () => Promise<void>;
   createNewFile: (
     name: string,
-    type: "tex" | "image",
+    type: "tex" | "image" | "md",
     folder?: string,
   ) => Promise<void>;
   createFolder: (name: string, parentFolder?: string) => Promise<void>;
@@ -254,6 +254,7 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
         f.type === "tex" ||
         f.type === "bib" ||
         f.type === "style" ||
+        f.type === "md" ||
         f.type === "other"
       ) {
         const isLargeNonEssential =
@@ -716,9 +717,12 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
 
     const relativePath = folder ? `${folder}/${name}` : name;
     const isTexFile = name.endsWith(".tex") || name.endsWith(".ltx");
+    const isMdFile = name.endsWith(".md") || name.endsWith(".markdown");
     const content = isTexFile
       ? `\\documentclass{article}\n\n\\begin{document}\n\n% Your content here\n\n\\end{document}\n`
-      : "";
+      : isMdFile
+        ? `# Title\n\nYour content here.\n`
+        : "";
 
     const fullPath = await createFileOnDisk(
       state.projectRoot,
@@ -854,7 +858,7 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
     const file = state.files.find((f) => f.relativePath === relativePath);
     if (!file) return;
 
-    if (file.type === "tex" || file.type === "bib") {
+    if (file.type === "tex" || file.type === "bib" || file.type === "md") {
       const content = await readTexFileContent(file.absolutePath);
       set((s) => ({
         files: s.files.map((f) =>
@@ -889,6 +893,7 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
             updated.type === "tex" ||
             updated.type === "bib" ||
             updated.type === "style" ||
+            updated.type === "md" ||
             updated.type === "other"
           ) {
             const isLargeNonEssential =
@@ -924,6 +929,7 @@ export const useDocumentStore = create<DocumentState>()((set, get) => ({
           pf.type === "tex" ||
           pf.type === "bib" ||
           pf.type === "style" ||
+          pf.type === "md" ||
           (pf.type === "other" && !isLargeNonEssential)
         ) {
           try {
