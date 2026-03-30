@@ -134,48 +134,48 @@ export function WorkspaceLayout() {
       {/* Main workspace (horizontal panels) */}
       <Panel defaultSize={terminalOpen ? 70 : 100} minSize={30}>
         <div className="relative h-full">
-        <CollapsedPanelRestoreBar />
-        <PanelGroup
-          direction="horizontal"
-          className="h-full"
-          // Force re-mount when panel order changes so defaultSize values apply
-          key={visiblePanels.join("-")}
-        >
-          {/* Sidebar — collapsible */}
-          <Panel
-            ref={sidebarRef}
-            defaultSize={sidebarCollapsed ? 0 : 15}
-            minSize={10}
-            maxSize={25}
-            collapsible
-            collapsedSize={0}
-            onCollapse={() => setSidebarCollapsed(true)}
-            onExpand={() => setSidebarCollapsed(false)}
+          <CollapsedPanelRestoreBar />
+          <PanelGroup
+            direction="horizontal"
+            className="h-full"
+            // Force re-mount when panel order changes so defaultSize values apply
+            key={visiblePanels.join("-")}
           >
-            <Sidebar />
-          </Panel>
+            {/* Sidebar — collapsible */}
+            <Panel
+              ref={sidebarRef}
+              defaultSize={sidebarCollapsed ? 0 : 15}
+              minSize={10}
+              maxSize={25}
+              collapsible
+              collapsedSize={0}
+              onCollapse={() => setSidebarCollapsed(true)}
+              onExpand={() => setSidebarCollapsed(false)}
+            >
+              <Sidebar />
+            </Panel>
 
-          {visiblePanels.map((panelId) => {
-            const config = PANEL_CONFIG[panelId];
-            return (
-              <Fragment key={panelId}>
-                <PanelResizeHandle className="w-px bg-border transition-colors hover:bg-ring" />
-                <CollapsiblePanel
-                  panelId={panelId}
-                  defaultSize={
-                    isSplit ? config.defaultSizeSplit : config.defaultSize
-                  }
-                  minSize={config.minSize}
-                  maxSize={config.maxSize}
-                  onCollapse={() => collapsePanel(panelId)}
-                  onExpand={() => expandPanel(panelId)}
-                >
-                  {config.component()}
-                </CollapsiblePanel>
-              </Fragment>
-            );
-          })}
-        </PanelGroup>
+            {visiblePanels.map((panelId) => {
+              const config = PANEL_CONFIG[panelId];
+              return (
+                <Fragment key={panelId}>
+                  <PanelResizeHandle className="w-px bg-border transition-colors hover:bg-ring" />
+                  <CollapsiblePanel
+                    panelId={panelId}
+                    defaultSize={
+                      isSplit ? config.defaultSizeSplit : config.defaultSize
+                    }
+                    minSize={config.minSize}
+                    maxSize={config.maxSize}
+                    onCollapse={() => collapsePanel(panelId)}
+                    onExpand={() => expandPanel(panelId)}
+                  >
+                    {config.component()}
+                  </CollapsiblePanel>
+                </Fragment>
+              );
+            })}
+          </PanelGroup>
         </div>
       </Panel>
 
@@ -230,7 +230,7 @@ function CollapsedPanelRestoreBar() {
         return (
           <button
             key={id}
-            className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground text-xs transition-colors hover:bg-accent hover:text-accent-foreground"
             onClick={() => {
               if (id === "sidebar") {
                 useUIStore.getState().toggleSidebar();
