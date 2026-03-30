@@ -20,6 +20,12 @@ import { TerminalPanel } from "./terminal/terminal-panel";
 import { useDocumentStore } from "@/stores/document-store";
 import { useUIStore, type PanelId } from "@/stores/ui-store";
 import { useTerminalStore } from "@/stores/terminal-store";
+import {
+  FileTextIcon,
+  EyeIcon,
+  BotMessageSquareIcon,
+  PanelLeftIcon,
+} from "lucide-react";
 
 const PANEL_CONFIG: Record<
   PanelId,
@@ -127,6 +133,8 @@ export function WorkspaceLayout() {
     <PanelGroup direction="vertical" className="h-full">
       {/* Main workspace (horizontal panels) */}
       <Panel defaultSize={terminalOpen ? 70 : 100} minSize={30}>
+        <div className="relative h-full">
+        <CollapsedPanelRestoreBar />
         <PanelGroup
           direction="horizontal"
           className="h-full"
@@ -168,6 +176,7 @@ export function WorkspaceLayout() {
             );
           })}
         </PanelGroup>
+        </div>
       </Panel>
 
       {/* Terminal panel — below workspace */}
@@ -180,6 +189,64 @@ export function WorkspaceLayout() {
         </>
       )}
     </PanelGroup>
+  );
+}
+
+const PANEL_ICONS: Record<string, typeof FileTextIcon> = {
+  sidebar: PanelLeftIcon,
+  editor: FileTextIcon,
+  pdf: EyeIcon,
+  chat: BotMessageSquareIcon,
+};
+
+const PANEL_NAMES: Record<string, string> = {
+  sidebar: "Sidebar",
+  editor: "Editor",
+  pdf: "Preview",
+  chat: "Claude",
+};
+
+/** Floating bar that shows restore buttons when panels are collapsed. */
+function CollapsedPanelRestoreBar() {
+  const collapsedPanels = useUIStore((s) => s.collapsedPanels);
+  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const chatViewMode = useUIStore((s) => s.chatViewMode);
+
+  const items: string[] = [];
+  if (sidebarCollapsed) items.push("sidebar");
+  for (const id of collapsedPanels) {
+    if (id === "chat" && chatViewMode !== "split") continue;
+    items.push(id);
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <div className="absolute right-2 bottom-2 z-50 flex items-center gap-1 rounded-lg border border-border bg-background/95 px-2 py-1.5 shadow-md backdrop-blur-sm">
+      <span className="mr-1 text-muted-foreground text-xs">Restore:</span>
+      {items.map((id) => {
+        const Icon = PANEL_ICONS[id] ?? FileTextIcon;
+        const name = PANEL_NAMES[id] ?? id;
+        return (
+          <button
+            key={id}
+            className="flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              if (id === "sidebar") {
+                useUIStore.getState().toggleSidebar();
+              } else {
+                const ref = getPanelRef(id);
+                if (ref) ref.expand();
+              }
+            }}
+            title={`Restore ${name}`}
+          >
+            <Icon className="size-3.5" />
+            {name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

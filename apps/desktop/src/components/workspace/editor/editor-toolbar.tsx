@@ -693,7 +693,6 @@ function CollapsedPanelButtons() {
   // Build list of collapsed panels that should show restore buttons
   const collapsedList = panelOrder.filter((id) => {
     if (id === "chat" && !isSplit) return false;
-    if (id === "editor") return false; // Don't show restore for editor in its own toolbar
     return collapsedPanels.has(id);
   });
 
